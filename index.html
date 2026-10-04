@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Aura Invest</title>
-<meta name="description" content="Aura Invest: análisis técnico interactivo y analítica predictiva sobre datos de mercado simulados." />
+<meta name="description" content="Aura Invest: análisis técnico interactivo y analítica predictiva con datos de mercado reales de Twelve Data." />
 <meta name="theme-color" content="#07080c" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238b5cf6'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%230b0d13'/%3E%3Cpath d='M6 22 L12 15 L17 18 L26 8' fill='none' stroke='url(%23g)' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -26,16 +26,18 @@
       <circle cx="26" cy="8" r="2.4" fill="#22d3ee"/>
     </svg>
     <span class="brand-name"><b>Aura</b> Invest</span>
-    <span class="demo-badge" title="Los precios se generan localmente con un modelo de paseo aleatorio">Datos simulados</span>
   </div>
 
   <div class="search" role="search">
     <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input id="tickerInput" type="text" autocomplete="off" spellcheck="false"
-           placeholder="Buscar ticker (AAPL, NVDA, SAN.MC…)"
-           role="combobox" aria-expanded="false" aria-controls="suggest" aria-autocomplete="list" aria-label="Buscar ticker" />
-    <kbd>/</kbd>
-    <ul id="suggest" class="suggest" role="listbox" aria-label="Sugerencias de tickers"></ul>
+    <input id="tickerInput" type="text" autocomplete="off" spellcheck="false" autocapitalize="characters"
+           placeholder="Buscar valor: nombre o ticker"
+           role="combobox" aria-expanded="false" aria-controls="suggest" aria-autocomplete="list"
+           aria-label="Buscar valor por nombre o ticker" aria-describedby="searchHelp" />
+    <kbd aria-hidden="true">/</kbd>
+    <span class="sr-only" id="searchHelp">Escribe y espera un momento; usa las flechas para elegir y Intro para abrir.</span>
+    <ul id="suggest" class="suggest" role="listbox" aria-label="Resultados de la búsqueda"></ul>
+    <span class="sr-only" id="searchStatus" role="status" aria-live="polite"></span>
   </div>
 
   <div class="quote" aria-live="polite">
@@ -54,6 +56,15 @@
       <span>Mín. <b id="qLow">—</b></span>
       <span>Vol. <b id="qVol">—</b></span>
     </div>
+  </div>
+
+  <div class="top-actions">
+    <button class="usage-pill mono" id="usagePill" type="button" title="Créditos de Twelve Data usados hoy desde este navegador">
+      <span id="usageText">0/800</span>
+    </button>
+    <button class="icon-btn icon-btn-lg" id="settingsBtn" type="button" aria-label="Ajustes" title="Ajustes" aria-haspopup="dialog">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
   </div>
 </header>
 
@@ -81,6 +92,8 @@
       </div>
     </div>
 
+    <div class="statusbar" id="statusBar" role="status" aria-live="polite"></div>
+
     <div class="chart-stack" id="chartStack">
       <div class="pane pane-main" id="paneMain">
         <div class="chart-host" id="chartMain"></div>
@@ -95,6 +108,14 @@
         <div class="pane-label" id="rsiLabel">RSI 14</div>
       </div>
       <div class="tooltip" id="tooltip" hidden></div>
+      <div class="empty-state" id="emptyState" hidden>
+        <div class="empty-card" role="alert">
+          <h2 id="emptyTitle"></h2>
+          <p id="emptyDetail"></p>
+          <p class="empty-api" id="emptyApi" hidden></p>
+          <div class="empty-actions" id="emptyActions"></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -106,6 +127,8 @@
       <div class="ai-title"><span class="aura-dot" aria-hidden="true"></span>AI Analytics</div>
       <div class="ai-sub" id="aiContext"></div>
     </div>
+
+    <p class="ai-empty" id="aiEmpty" hidden>Sin datos que analizar. El panel se rellena cuando hay velas reales del valor seleccionado.</p>
 
     <!-- 1. Probabilidad de tendencia -->
     <article class="card" id="cardTrend">
@@ -193,8 +216,62 @@
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>
     Herramienta con fines educativos. Las proyecciones son estimaciones estadísticas y no constituyen asesoramiento financiero.
   </p>
-  <p>Datos simulados · Gráficos: <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView Lightweight Charts™</a></p>
+  <p>Datos de mercado: <a href="https://twelvedata.com/" target="_blank" rel="noopener">Twelve Data</a> · Gráficos: <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView Lightweight Charts™</a></p>
 </footer>
+
+<!-- =========================================================================
+     AJUSTES
+     ========================================================================= -->
+<dialog class="dialog" id="settingsDialog" aria-labelledby="settingsTitle">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <h2 id="settingsTitle">Ajustes</h2>
+      <button type="button" class="icon-btn" id="settingsClose" aria-label="Cerrar ajustes">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+
+    <section class="dialog-section" aria-labelledby="keyTitle">
+      <h3 id="keyTitle">Clave de Twelve Data</h3>
+      <p class="hint">
+        Aura Invest muestra precios reales de <a href="https://twelvedata.com/" target="_blank" rel="noopener">Twelve Data</a>.
+        Necesitas una clave de API gratuita (plan Basic: 8 créditos por minuto y 800 al día;
+        acciones de EE. UU. en tiempo real, forex y cripto).
+      </p>
+      <ol class="steps">
+        <li>Crea una cuenta gratuita en <a href="https://twelvedata.com/pricing" target="_blank" rel="noopener">twelvedata.com</a> (plan Basic).</li>
+        <li>En tu cuenta, abre la sección <b>API Keys</b> y copia la clave.</li>
+        <li>Pégala aquí y pulsa <b>Guardar clave</b>.</li>
+      </ol>
+      <form id="keyForm" novalidate>
+        <label class="field-label" for="apiKeyInput">Clave de API</label>
+        <div class="key-row">
+          <input id="apiKeyInput" class="field" type="password" autocomplete="off" spellcheck="false" autocapitalize="off"
+                 aria-describedby="keyStatus keyPrivacy" />
+          <button type="button" class="btn" id="keyShow" aria-pressed="false" aria-controls="apiKeyInput">Mostrar</button>
+        </div>
+        <p class="key-status" id="keyStatus" role="status" aria-live="polite"></p>
+        <div class="btn-row">
+          <button type="submit" class="btn primary" id="keySave">Guardar clave</button>
+          <button type="button" class="btn danger" id="keyDelete">Borrar clave</button>
+        </div>
+      </form>
+      <p class="hint" id="keyPrivacy">
+        La clave se guarda solo en este navegador. Se envía únicamente a Twelve Data, en una cabecera de
+        cada petición (nunca en la URL), y no se incluye en exportaciones ni en registros.
+      </p>
+    </section>
+
+    <section class="dialog-section" aria-labelledby="usageTitle">
+      <h3 id="usageTitle">Consumo de la API</h3>
+      <dl class="kv" id="usageList"></dl>
+      <p class="hint" id="usageHint"></p>
+      <div class="btn-row">
+        <button type="button" class="btn" id="cacheClear">Vaciar caché</button>
+      </div>
+    </section>
+  </div>
+</dialog>
 
 <div class="toast" id="toast" role="status"></div>
 
@@ -203,6 +280,8 @@
 <!-- Aplicación: el orden importa (cada archivo usa lo que definen los anteriores) -->
 <script src="js/config.js" defer></script>
 <script src="js/utils.js" defer></script>
+<script src="js/store.js" defer></script>
+<script src="js/api.js" defer></script>
 <script src="js/data.js" defer></script>
 <script src="js/indicators.js" defer></script>
 <script src="js/model.js" defer></script>
@@ -210,6 +289,7 @@
 <script src="js/chart-primitives.js" defer></script>
 <script src="js/charts.js" defer></script>
 <script src="js/panel.js" defer></script>
+<script src="js/settings.js" defer></script>
 <script src="js/controls.js" defer></script>
 <script src="js/main.js" defer></script>
 </body>

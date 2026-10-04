@@ -1,0 +1,185 @@
+{
+ "data": [
+  {
+   "symbol": "AAPL",
+   "instrument_name": "Apple Inc.",
+   "exchange": "NASDAQ",
+   "mic_code": "XNGS",
+   "exchange_timezone": "America/New_York",
+   "instrument_type": "Common Stock",
+   "country": "United States",
+   "currency": "USD",
+   "access": {
+    "global": "Basic",
+    "plan": "Basic",
+    "plan_business": "Basic"
+   }
+  },
+  {
+   "symbol": "0R2V",
+   "instrument_name": "Apple Inc.",
+   "exchange": "LSE",
+   "mic_code": "XLON",
+   "exchange_timezone": "Europe/London",
+   "instrument_type": "Common Stock",
+   "country": "United Kingdom",
+   "currency": "USD",
+   "access": {
+    "global": "Grow",
+    "plan": "Grow",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "AAPL",
+   "instrument_name": "Apple Inc.",
+   "exchange": "BVC",
+   "mic_code": "XBOG",
+   "exchange_timezone": "America/New_York",
+   "instrument_type": "Common Stock",
+   "country": "Colombia",
+   "currency": "COP",
+   "access": {
+    "global": "Ultra",
+    "plan": "Ultra",
+    "plan_business": "Enterprise"
+   }
+  },
+  {
+   "symbol": "AAPL",
+   "instrument_name": "Apple Inc.",
+   "exchange": "BMV",
+   "mic_code": "XMEX",
+   "exchange_timezone": "America/Swift_Current",
+   "instrument_type": "Common Stock",
+   "country": "Mexico",
+   "currency": "MXN",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "APC",
+   "instrument_name": "Apple Inc.",
+   "exchange": "XETR",
+   "mic_code": "XETR",
+   "exchange_timezone": "Europe/Berlin",
+   "instrument_type": "Common Stock",
+   "country": "Germany",
+   "currency": "EUR",
+   "access": {
+    "global": "Grow",
+    "plan": "Grow",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "AAPL",
+   "instrument_name": "Apple Inc.",
+   "exchange": "TSX",
+   "mic_code": "XTSE",
+   "exchange_timezone": "America/Toronto",
+   "instrument_type": "Depositary Receipt",
+   "country": "Canada",
+   "currency": "CAD",
+   "access": {
+    "global": "Grow",
+    "plan": "Grow",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "AAPLCL",
+   "instrument_name": "Apple Inc.",
+   "exchange": "BVS",
+   "mic_code": "XSGO",
+   "exchange_timezone": "America/Santiago",
+   "instrument_type": "Common Stock",
+   "country": "Chile",
+   "currency": "CLP",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "APETNQ",
+   "instrument_name": "Frb Quanto ETN on Apple",
+   "exchange": "JSE",
+   "mic_code": "XJSE",
+   "exchange_timezone": "Africa/Johannesburg",
+   "instrument_type": "ETF",
+   "country": "South Africa",
+   "currency": "ZAc",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "AAPL",
+   "instrument_name": "Apple Inc.",
+   "exchange": "NEO",
+   "mic_code": "NEOE",
+   "exchange_timezone": "America/Toronto",
+   "instrument_type": "Depositary Receipt",
+   "country": "Canada",
+   "currency": "CAD",
+   "access": {
+    "global": "Basic",
+    "plan": "Basic",
+    "plan_business": "Basic"
+   }
+  },
+  {
+   "symbol": "APETNC",
+   "instrument_name": "FRB Compounded ETN on Apple",
+   "exchange": "JSE",
+   "mic_code": "XJSE",
+   "exchange_timezone": "Africa/Johannesburg",
+   "instrument_type": "ETF",
+   "country": "South Africa",
+   "currency": "ZAc",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "AAPL",
+   "instrument_name": "Apple Inc.",
+   "exchange": "BVL",
+   "mic_code": "XLIM",
+   "exchange_timezone": "America/Lima",
+   "instrument_type": "Common Stock",
+   "country": "Peru",
+   "currency": "PEN",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "1AAPL",
+   "instrument_name": "Apple Inc.",
+   "exchange": "MTA",
+   "mic_code": "XMIL",
+   "exchange_timezone": "Europe/Rome",
+   "instrument_type": "Common Stock",
+   "country": "Italy",
+   "currency": "EUR",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  }
+ ],
+ "status": "ok"
+}

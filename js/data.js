@@ -1,240 +1,289 @@
 /* =========================================================================
- * Aura Invest · Capa de datos
- * Toda la app consume únicamente `fetchMarketData()` y `fetchQuote()`.
- * Para usar una API real basta con cambiar DATA_SOURCE y aportar la clave.
+ * Aura Invest · Capa de datos (Twelve Data)
+ * Toda la app consume únicamente:
+ *   fetchMarketData(id, tfKey) → { meta, bars, barsPerDay, source }
+ *   fetchQuotes(ids)           → Map(id → cotización | ApiError)
+ *   searchSymbols(texto)       → [instrumentos]
+ *
+ * Fechas: las velas se piden con `timezone=Exchange` (hora local de la bolsa) y se
+ * codifican como si fueran UTC, que es lo que esperan los gráficos y el modelo
+ * (las 09:30 de Nueva York se muestran como 09:30). Las marcas de tiempo absolutas
+ * (última cotización) se conservan en UTC real.
+ *
+ * Identificadores: "AAPL" (cotización principal en EE. UU.) o "SÍMBOLO:BOLSA"
+ * (p. ej. "SAN:BME") para cualquier otra.
  * ========================================================================= */
 (() => {
 'use strict';
 
-const { TIMEFRAMES, DAILY_HISTORY, INTRADAY_DAYS, DAY } = Aura.config;
-const { last, sleep, hashStr, mulberry32, makeGauss, dayStart, weekdayOf, lastClosedSession, tradingDaysBack } = Aura.utils;
+const { TIMEFRAMES, CACHE_TTL, API } = Aura.config;
+const { last } = Aura.utils;
+const { client, ApiError, MESSAGES, errorFrom } = Aura.api;
 
-const DATA_SOURCE = 'simulated';   // 'simulated' | 'twelvedata'
+const INSTRUMENT_TTL = 30 * 86400;     // lo aprendido de symbol_search (plan, nombre…)
+const UNAVAILABLE_TTL = 86400;         // un símbolo que la API ha rechazado por plan
+const SESSION_TTL = 30 * 86400;        // horario de sesión deducido de velas de 5/15 min
 
-/** Universo de ejemplo con parámetros del simulador (no son cotizaciones reales). */
-const TICKERS = {
-  'AAPL':   { symbol: 'AAPL',   name: 'Apple Inc.',            exchange: 'NASDAQ', currency: 'USD', price: 255.4, vol: 0.016,  drift: 0.0005,  avgVolume: 52e6,  session: [570, 390] },
-  'MSFT':   { symbol: 'MSFT',   name: 'Microsoft Corp.',       exchange: 'NASDAQ', currency: 'USD', price: 512.8, vol: 0.0145, drift: 0.00055, avgVolume: 21e6,  session: [570, 390] },
-  'NVDA':   { symbol: 'NVDA',   name: 'NVIDIA Corp.',          exchange: 'NASDAQ', currency: 'USD', price: 186.6, vol: 0.027,  drift: 0.0012,  avgVolume: 185e6, session: [570, 390] },
-  'TSLA':   { symbol: 'TSLA',   name: 'Tesla Inc.',            exchange: 'NASDAQ', currency: 'USD', price: 438.2, vol: 0.034,  drift: 0.0007,  avgVolume: 92e6,  session: [570, 390] },
-  'SAN.MC': { symbol: 'SAN.MC', name: 'Banco Santander, S.A.', exchange: 'BME',    currency: 'EUR', price: 8.912, vol: 0.017,  drift: 0.0007,  avgVolume: 31e6,  session: [540, 510] },
-};
+/* ---------------------------------------------------------------------------
+ * Parseo
+ * ------------------------------------------------------------------------- */
 
-/** Metadatos de un ticker; los desconocidos reciben parámetros genéricos derivados de su nombre. */
-function resolveMeta(symbol) {
-  const known = TICKERS[symbol];
-  const h = hashStr(symbol);
-  const meta = known ? { ...known } : {
-    symbol, name: `${symbol} (ticker simulado)`, exchange: 'SIM', currency: 'USD',
-    price: 20 + (h % 380), vol: 0.012 + ((h >>> 8) % 22) / 1000, drift: 0.0002 + ((h >>> 16) % 8) / 10000,
-    avgVolume: 4e6 + ((h >>> 4) % 40) * 1e6, session: [570, 390], custom: true,
-  };
-  meta.precision = meta.price < 20 ? 3 : 2;
-  return meta;
+/** "2026-10-02" o "2026-10-02 15:55:00" (hora de la bolsa) → segundos, codificados como UTC. */
+function parseDateTime(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(String(s || '').trim());
+  if (!m) return NaN;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)) / 1000;
 }
+
+const num = (v) => (v === undefined || v === null || v === '' ? NaN : Number(v));
+
+/** Decimales de precio según su magnitud (forex y céntimos necesitan más). */
+const precisionFor = (price) => (price < 2 ? 4 : price < 20 ? 3 : 2);
 
 /**
- * Serie diaria OHLCV: paseo aleatorio geométrico con
- *  - regímenes de tendencia de duración aleatoria,
- *  - volatilidad agrupada (GARCH(1,1)),
- *  - saltos por resultados trimestrales y shocks esporádicos,
- *  - volumen correlacionado con el tamaño del movimiento.
- * Al final se reescala para que el último cierre coincida con el precio de referencia.
+ * Divisa de una respuesta: `currency` en acciones, la cotizada en pares ("EUR/USD" → USD).
+ * Solo se aceptan códigos alfabéticos: la divisa acaba dentro de textos con HTML del modelo.
  */
-function generateDaily(meta, endT, count) {
-  const rng = mulberry32(hashStr(meta.symbol));
-  const gauss = makeGauss(rng);
-  const days = tradingDaysBack(endT, count);
-  const base = meta.vol;
-  const alpha = 0.08, beta = 0.9, omega = base * base * (1 - alpha - beta);
-  const earningsPhase = hashStr(meta.symbol + 'E') % 63;
-
-  let sigma2 = base * base, shock = 0, drift = meta.drift, regimeLeft = 0, close = 100, volTrend = 1;
-  const bars = [], sigmas = [];
-
-  for (let i = 0; i < days.length; i++) {
-    if (regimeLeft-- <= 0) {                           // nuevo régimen de tendencia
-      drift = meta.drift + gauss() * base * 0.1;
-      regimeLeft = 15 + Math.floor(rng() * 90);
-    }
-    sigma2 = omega + alpha * shock * shock + beta * sigma2;
-    const sigma = Math.sqrt(sigma2);
-    const earnings = i % 63 === earningsPhase;
-    let z = gauss();
-    if (earnings) z += gauss() * 3;                   // gap por resultados
-    else if (rng() < 0.012) z += gauss() * 2.5;       // shock esporádico
-
-    const r = drift - 0.5 * sigma2 + sigma * z;
-    shock = r - drift;
-    const gap = earnings ? r * 0.8 : r * (0.15 + 0.2 * rng()) + gauss() * sigma * 0.15;
-    const open = close * Math.exp(gap);
-    const next = close * Math.exp(r);
-    const high = Math.max(open, next) * Math.exp(Math.abs(gauss()) * sigma * 0.55);
-    const low = Math.min(open, next) * Math.exp(-Math.abs(gauss()) * sigma * 0.55);
-    volTrend = volTrend * 0.98 + 0.02 * Math.exp(gauss() * 0.3);
-    const volume = meta.avgVolume * volTrend * Math.exp(gauss() * 0.28) * (0.65 + 0.55 * Math.abs(r) / base) * (earnings ? 2.6 : 1);
-
-    bars.push({ time: days[i], open, high, low, close: next, volume: Math.round(volume) });
-    sigmas.push(sigma);
-    close = next;
-  }
-
-  const k = meta.price / close;
-  for (const b of bars) { b.open *= k; b.high *= k; b.low *= k; b.close *= k; }
-  return { bars, sigmas };
+function currencyOf(meta, symbol) {
+  const valid = (c) => (/^[A-Za-z]{2,5}$/.test(c || '') ? c : '');
+  if (meta && meta.currency) return valid(meta.currency);
+  const pair = String((meta && meta.symbol) || symbol || '').split(':')[0];
+  return pair.includes('/') ? valid(pair.split('/')[1]) : '';
 }
 
-/**
- * Detalle intradía (5 min) de las últimas sesiones mediante un puente browniano
- * que parte de la apertura y termina en el cierre diario. El volumen sigue una
- * curva en "U" (más actividad en apertura y cierre). Los máximos, mínimos y
- * volumen diarios se recalculan para que ambas series sean coherentes.
- */
-function generateIntraday(meta, daily, sigmas, nDays) {
-  const rng = mulberry32(hashStr(meta.symbol + '|intraday'));
-  const gauss = makeGauss(rng);
-  const [openMin, sessMin] = meta.session;
-  const n = Math.round(sessMin / 5);
-  const out = [];
-
-  for (let d = Math.max(1, daily.length - nDays); d < daily.length; d++) {
-    const day = daily[d];
-    const sd = sigmas[d] * (0.85 + 0.3 * rng());
-    const sb = sd / Math.sqrt(n);
-    const lo0 = Math.log(day.open), lc = Math.log(day.close);
-
-    const B = [0];
-    for (let k = 1; k <= n; k++) B.push(B[k - 1] + gauss() * sb);
-    const path = B.map((b, k) => lo0 + (k / n) * (lc - lo0) + b - (k / n) * B[n]);
-
-    const w = [];
-    let wsum = 0;
-    for (let k = 0; k < n; k++) {
-      const x = (k + 0.5) / n;
-      const v = (0.55 + 1.6 * Math.exp(-x * 9) + 0.9 * Math.exp(-(1 - x) * 11)) * Math.exp(gauss() * 0.35);
-      w.push(v); wsum += v;
-    }
-
-    const t0 = day.time + openMin * 60;
-    let hi = -Infinity, lo = Infinity, vsum = 0;
-    for (let k = 0; k < n; k++) {
-      const o = Math.exp(path[k]), c = Math.exp(path[k + 1]);
-      const h = Math.max(o, c) * Math.exp(Math.abs(gauss()) * sb * 0.45);
-      const l = Math.min(o, c) * Math.exp(-Math.abs(gauss()) * sb * 0.45);
-      const v = Math.round(day.volume * (w[k] / wsum) * (1 + 0.2 * Math.abs(Math.log(c / o)) / sb));
-      out.push({ time: t0 + k * 300, open: o, high: h, low: l, close: c, volume: v });
-      hi = Math.max(hi, h); lo = Math.min(lo, l); vsum += v;
-    }
-    day.high = hi; day.low = lo; day.volume = vsum;
+/** Velas de una respuesta de time_series, en orden ascendente y sin duplicados. */
+function parseSeries(json) {
+  if (!json || !Array.isArray(json.values)) throw new ApiError('SERVER', 'La respuesta de Twelve Data no contiene velas.');
+  const bars = [];
+  for (const v of json.values) {
+    const b = {
+      time: parseDateTime(v.datetime),
+      open: num(v.open), high: num(v.high), low: num(v.low), close: num(v.close),
+      volume: Number.isFinite(num(v.volume)) ? num(v.volume) : 0,
+    };
+    if ([b.time, b.open, b.high, b.low, b.close].every(Number.isFinite)) bars.push(b);
   }
-  return out;
-}
-
-/** Agrupa velas consecutivas que comparten clave (p. ej. 5 min → 1 h, diario → semanal). */
-function aggregateBars(bars, keyFn) {
+  bars.sort((a, b) => a.time - b.time);
   const out = [];
-  let cur = null, curKey = null;
   for (const b of bars) {
-    const k = keyFn(b.time);
-    if (k !== curKey) {
-      if (cur) out.push(cur);
-      cur = { time: k, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume };
-      curKey = k;
-    } else {
-      cur.high = Math.max(cur.high, b.high);
-      cur.low = Math.min(cur.low, b.low);
-      cur.close = b.close;
-      cur.volume += b.volume;
-    }
+    if (out.length && last(out).time === b.time) out[out.length - 1] = b;   // la API a veces repite la última fecha
+    else out.push(b);
   }
-  if (cur) out.push(cur);
   return out;
 }
-const intradayKey = (openMin, minutes) => (t) => {
-  const open = dayStart(t) + openMin * 60;
-  return open + Math.floor((t - open) / (minutes * 60)) * minutes * 60;
-};
-const weekKey = (t) => {
-  const idx = Math.floor(t / DAY);
-  return (idx - ((weekdayOf(t) + 6) % 7)) * DAY;      // lunes de esa semana
-};
-function barsPerDayFor(tf, meta) {
-  if (tf.kind === 'intraday') return meta.session[1] / tf.minutes;
+
+/**
+ * Horario de sesión [apertura, duración] en minutos (hora de la bolsa), deducido de
+ * velas intradía: la apertura más frecuente y el cierre más frecuente (inicio de la
+ * última vela + su duración). Con velas de 1 h el cierre es aproximado (la última
+ * vela puede durar menos de una hora), por eso se marca `exact: false`.
+ */
+function inferSession(bars, minutes) {
+  const days = new Map();
+  for (const b of bars) {
+    const d = Math.floor(b.time / 86400);
+    const m = Math.round((b.time - d * 86400) / 60);
+    const e = days.get(d);
+    if (e) { e.first = Math.min(e.first, m); e.last = Math.max(e.last, m); } else days.set(d, { first: m, last: m });
+  }
+  if (!days.size) return null;
+  const mode = (arr) => {
+    const c = new Map();
+    arr.forEach((v) => c.set(v, (c.get(v) || 0) + 1));
+    return [...c.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+  };
+  const open = mode([...days.values()].map((e) => e.first));
+  const close = mode([...days.values()].map((e) => e.last + minutes));
+  return { session: [open, Math.max(minutes, close - open)], exact: minutes <= 15 };
+}
+
+function parseQuote(q) {
+  const price = num(q.close);
+  return {
+    meta: {
+      symbol: q.symbol, name: q.name || q.symbol, exchange: q.exchange || '', mic: q.mic_code || '',
+      currency: currencyOf(q, q.symbol), precision: precisionFor(price),
+    },
+    price,
+    prevClose: num(q.previous_close),
+    open: num(q.open), high: num(q.high), low: num(q.low), volume: num(q.volume),
+    change: num(q.change), pct: num(q.percent_change),
+    time: parseDateTime(q.datetime),                              // fecha de la sesión (hora de la bolsa)
+    lastQuoteAt: (num(q.last_quote_at) || num(q.timestamp)) * 1000, // última cotización (UTC real, ms)
+    isMarketOpen: q.is_market_open === true,
+  };
+}
+
+function parseSearchItem(d) {
+  const us = d.country === 'United States';
+  const plan = d.access && d.access.plan ? d.access.plan : null;
+  return {
+    id: us || String(d.symbol).includes('/') ? d.symbol : `${d.symbol}:${d.exchange}`,
+    symbol: d.symbol, name: d.instrument_name || d.symbol,
+    exchange: d.exchange || '', mic: d.mic_code || '', currency: d.currency || '',
+    country: d.country || '', type: d.instrument_type || '', timezone: d.exchange_timezone || '',
+    plan, available: !plan || plan === API.freePlan,
+  };
+}
+
+/* ---------------------------------------------------------------------------
+ * Conocimiento de instrumentos (plan, nombre) y de sesiones
+ * ------------------------------------------------------------------------- */
+
+const instrumentKey = (id) => `instrument|${id}`;
+const unavailableKey = (id) => `unavailable|${id}`;
+const sessionKey = (id) => `session|${id}`;
+
+function rememberInstrument(item) { client.cachePut(instrumentKey(item.id), item, INSTRUMENT_TTL); }
+function knownInstrument(id) { const e = client.cacheGet(instrumentKey(id)); return e ? e.data : null; }
+
+/** Error de plan conocido de antemano (sin gastar créditos), o null. */
+function planError(id) {
+  const info = knownInstrument(id);
+  if (info && !info.available) {
+    return new ApiError('PLAN', `${id} requiere el plan ${info.plan} de Twelve Data; el plan gratuito (${API.freePlan}) no lo incluye.`);
+  }
+  const rej = client.cacheGet(unavailableKey(id));
+  if (rej) return new ApiError('PLAN', MESSAGES.PLAN, { apiMessage: rej.data.apiMessage });
+  return null;
+}
+function rememberRejection(id, err) {
+  if (err && err.code === 'PLAN') client.cachePut(unavailableKey(id), { apiMessage: err.apiMessage }, UNAVAILABLE_TTL);
+}
+
+/** "SAN:BME" → { symbol: 'SAN', exchange: 'BME' }; "AAPL" o "EUR/USD" → { symbol }. */
+function idParams(id) {
+  const i = id.lastIndexOf(':');
+  return i > 0 ? { symbol: id.slice(0, i), exchange: id.slice(i + 1) } : { symbol: id };
+}
+
+/* ---------------------------------------------------------------------------
+ * API pública
+ * ------------------------------------------------------------------------- */
+
+function barsPerDayFor(tf, session) {
+  if (tf.kind === 'intraday') return session[1] / tf.minutes;
   return tf.kind === 'weekly' ? 0.2 : 1;
 }
 
-/** Proveedor por defecto: genera y cachea el histórico de cada ticker en memoria. */
-const SimulatedProvider = {
-  cache: new Map(),
-  universe(symbol) {
-    if (!this.cache.has(symbol)) {
-      const meta = resolveMeta(symbol);
-      const { bars: daily, sigmas } = generateDaily(meta, lastClosedSession(), DAILY_HISTORY);
-      const intraday5 = generateIntraday(meta, daily, sigmas, INTRADAY_DAYS);
-      const weekly = aggregateBars(daily, weekKey);
-      this.cache.set(symbol, { meta, daily, intraday5, weekly, byMinutes: new Map([[5, intraday5]]) });
-    }
-    return this.cache.get(symbol);
-  },
-  async fetchOHLCV(symbol, tfKey) {
-    await sleep(160 + Math.random() * 140);           // simula la latencia de una API
-    const u = this.universe(symbol);
-    const tf = TIMEFRAMES[tfKey];
-    let bars;
-    if (tf.kind === 'intraday') {
-      if (!u.byMinutes.has(tf.minutes)) u.byMinutes.set(tf.minutes, aggregateBars(u.intraday5, intradayKey(u.meta.session[0], tf.minutes)));
-      bars = u.byMinutes.get(tf.minutes);
-    } else {
-      bars = tf.kind === 'daily' ? u.daily : u.weekly;
-    }
-    return { meta: u.meta, bars, barsPerDay: barsPerDayFor(tf, u.meta) };
-  },
-  async fetchQuote(symbol) {
-    const { meta, daily } = this.universe(symbol);
-    const a = daily[daily.length - 1], b = daily[daily.length - 2];
-    return { meta, price: a.close, prevClose: b.close, open: a.open, high: a.high, low: a.low, volume: a.volume, time: a.time };
-  },
-};
+/** Velas de una temporalidad, con metadatos y origen. */
+async function fetchMarketData(id, tfKey, { priority = 3 } = {}) {
+  const tf = TIMEFRAMES[tfKey];
+  const known = planError(id);
+  if (known) throw known;
+
+  let res;
+  try {
+    res = await client.get('/time_series',
+      { ...idParams(id), interval: tf.interval, outputsize: tf.outputsize, timezone: 'Exchange' },
+      { ttl: CACHE_TTL[tf.interval], priority });
+  } catch (err) {
+    rememberRejection(id, err);
+    throw err;
+  }
+  const bars = parseSeries(res.data);
+  if (bars.length < 30) throw new ApiError('NOT_FOUND', 'Twelve Data devuelve demasiado pocas velas para analizar este símbolo.');
+
+  const m = res.data.meta || {};
+  let session = null, sessionExact = true;
+  if (tf.kind === 'intraday') {
+    const inferred = inferSession(bars, tf.minutes);
+    const stored = client.cacheGet(sessionKey(id));
+    if (inferred.exact) client.cachePut(sessionKey(id), inferred.session, SESSION_TTL);
+    if (!inferred.exact && stored) session = stored.data;            // mejor el horario exacto ya aprendido
+    else { session = inferred.session; sessionExact = inferred.exact; }
+  }
+  const info = knownInstrument(id);
+  const meta = {
+    id, symbol: m.symbol || idParams(id).symbol,
+    name: (info && info.name) || m.symbol || id,
+    exchange: m.exchange || (info && info.exchange) || '',
+    mic: m.mic_code || '', timezone: m.exchange_timezone || '', type: m.type || '',
+    currency: currencyOf(m, id),
+    precision: precisionFor(last(bars).close),
+    session, sessionExact,
+  };
+  return {
+    meta, bars,
+    barsPerDay: barsPerDayFor(tf, session),
+    source: { provider: API.provider, at: res.at, cached: res.cached, interval: tf.interval },
+  };
+}
+
+/** Separa una respuesta de quote (individual o por lotes) por identificador. */
+function splitQuotes(body, ids) {
+  if (ids.length === 1) return [[ids[0], body]];
+  return ids.map((id) => {
+    if (body[id]) return [id, body[id]];
+    const sym = idParams(id).symbol;
+    const hit = Object.values(body).find((v) => v && v.symbol === sym);
+    return [id, hit || null];
+  });
+}
 
 /**
- * Adaptador opcional para Twelve Data (https://twelvedata.com/docs#time-series).
- * Activar con DATA_SOURCE = 'twelvedata' y una clave en `apiKey`.
- * Alpha Vantage o Finnhub se integran igual: basta con devolver el mismo formato
- * { meta, bars: [{ time, open, high, low, close, volume }], barsPerDay } en orden ascendente.
+ * Cotizaciones de varios símbolos, agrupadas en peticiones por lotes de hasta
+ * 8 (el cupo por minuto; cada símbolo cuesta 1 crédito). Nunca rechaza: cada
+ * identificador obtiene su cotización o su ApiError.
  */
-const TwelveDataProvider = {
-  apiKey: 'TU_API_KEY',
-  map: { '1D': ['5min', 220], '5D': ['15min', 280], '1M': ['1h', 300], '6M': ['1day', 300], 'YTD': ['1day', 400], '1A': ['1day', 400], '5A': ['1week', 400] },
-  async fetchOHLCV(symbol, tfKey) {
-    const [interval, outputsize] = this.map[tfKey];
-    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&apikey=${this.apiKey}`;
-    const json = await (await fetch(url)).json();
-    if (json.status === 'error') throw new Error(json.message);
-    const toTime = (s) => Date.parse(s.replace(' ', 'T') + (s.length > 10 ? 'Z' : 'T00:00:00Z')) / 1000;
-    const bars = json.values.map((v) => ({ time: toTime(v.datetime), open: +v.open, high: +v.high, low: +v.low, close: +v.close, volume: +v.volume || 0 })).reverse();
-    const price = last(bars).close;
-    const meta = {
-      symbol, name: json.meta.symbol, exchange: json.meta.exchange || '', currency: json.meta.currency || 'USD',
-      session: [570, 390], precision: price < 20 ? 3 : 2,
-    };
-    return { meta, bars, barsPerDay: barsPerDayFor(TIMEFRAMES[tfKey], meta) };
-  },
+async function fetchQuotes(ids, { priority = 2, force = false } = {}) {
+  const out = new Map();
+  const need = [];
+  for (const id of [...new Set(ids)]) {
+    const known = planError(id);
+    if (known) { out.set(id, known); continue; }
+    const c = !force && client.cacheGet(`quote|${id}`);
+    if (c) out.set(id, { ...parseQuote(c.data), id, at: c.t, cached: true });
+    else need.push(id);
+  }
+  for (let i = 0; i < need.length; i += API.perMinute) {
+    const chunk = need.slice(i, i + API.perMinute);
+    try {
+      const res = await client.get('/quote', { symbol: chunk.join(',') }, { cost: chunk.length, priority });
+      for (const [id, body] of splitQuotes(res.data, chunk)) {
+        if (!body) { out.set(id, new ApiError('NOT_FOUND', MESSAGES.NOT_FOUND)); continue; }
+        if (body.status === 'error' || (body.code && !body.symbol)) {
+          const err = errorFrom(Number(body.code) || 400, body);
+          rememberRejection(id, err);
+          out.set(id, err);
+          continue;
+        }
+        const e = client.cachePut(`quote|${id}`, body, CACHE_TTL.quote);
+        out.set(id, { ...parseQuote(body), id, at: e.t, cached: false });
+      }
+    } catch (err) {
+      if (chunk.length === 1) rememberRejection(chunk[0], err);
+      chunk.forEach((id) => out.set(id, err));
+    }
+  }
+  return out;
+}
+
+/**
+ * Búsqueda de instrumentos (nombre, bolsa, divisa y plan necesario).
+ * Se intenta sin clave, que no consume créditos; si Twelve Data la exige, se usa la
+ * clave (1 crédito por búsqueda).
+ */
+async function searchSymbols(text, { signal } = {}) {
+  const q = String(text || '').trim();
+  if (!q) return [];
+  const params = { symbol: q, outputsize: 15, show_plan: 'true' };
+  let res;
+  try {
+    res = await client.get('/symbol_search', params, { ttl: CACHE_TTL.search, auth: false, signal, priority: 4 });
+  } catch (err) {
+    if (err.code !== 'AUTH') throw err;
+    res = await client.get('/symbol_search', params, { ttl: CACHE_TTL.search, auth: true, cost: 1, signal, priority: 4 });
+  }
+  const items = (res.data.data || []).map(parseSearchItem);
+  items.forEach(rememberInstrument);
+  // Primero lo que entra en el plan gratuito; dentro de cada grupo, el orden de Twelve Data
+  return items.sort((a, b) => Number(b.available) - Number(a.available));
+}
+
+Aura.data = {
+  fetchMarketData, fetchQuotes, searchSymbols, knownInstrument,
+  // expuestos para las pruebas
+  parseDateTime, parseSeries, parseQuote, parseSearchItem, inferSession, precisionFor, idParams, barsPerDayFor,
 };
-
-const PROVIDERS = { simulated: SimulatedProvider, twelvedata: TwelveDataProvider };
-
-/** Punto único de acceso a datos OHLCV: sustituir aquí el proveedor por una API real. */
-async function fetchMarketData(symbol, tfKey) {
-  return PROVIDERS[DATA_SOURCE].fetchOHLCV(symbol, tfKey);
-}
-/** Cotización de la última sesión (deriva de las velas diarias si el proveedor no la ofrece). */
-async function fetchQuote(symbol) {
-  const p = PROVIDERS[DATA_SOURCE];
-  if (p.fetchQuote) return p.fetchQuote(symbol);
-  const { meta, bars } = await p.fetchOHLCV(symbol, '6M');
-  const a = last(bars), b = bars[bars.length - 2] || a;
-  return { meta, price: a.close, prevClose: b.close, open: a.open, high: a.high, low: a.low, volume: a.volume, time: a.time };
-}
-
-Aura.data = { TICKERS, fetchMarketData, fetchQuote };
 })();

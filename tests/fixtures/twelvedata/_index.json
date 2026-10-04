@@ -1,0 +1,73 @@
+{
+  "note": "Respuestas reales de api.twelvedata.com. La mayoría se capturaron con la clave pública \"demo\"; las marcadas como \"personal\" con una clave del plan Basic, que no se guarda en ningún archivo.",
+  "captures": {
+    "time_series_AAPL_1day": {
+      "query": "/time_series?symbol=AAPL&interval=1day&outputsize=400&timezone=Exchange",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-04T16:29:59.350Z"
+    },
+    "time_series_AAPL_1week": {
+      "query": "/time_series?symbol=AAPL&interval=1week&outputsize=400&timezone=Exchange",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-04T16:30:07.559Z"
+    },
+    "time_series_AAPL_5min": {
+      "query": "/time_series?symbol=AAPL&interval=5min&outputsize=260&timezone=Exchange",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-04T16:30:15.760Z"
+    },
+    "time_series_AAPL_15min": {
+      "query": "/time_series?symbol=AAPL&interval=15min&outputsize=330&timezone=Exchange",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-04T16:30:23.951Z"
+    },
+    "time_series_AAPL_1h": {
+      "query": "/time_series?symbol=AAPL&interval=1h&outputsize=360&timezone=Exchange",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-04T16:30:32.137Z"
+    },
+    "quote_AAPL": {
+      "query": "/quote?symbol=AAPL",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-04T16:30:40.427Z"
+    },
+    "symbol_search_SAN": {
+      "query": "/symbol_search?symbol=SAN&outputsize=12&show_plan=true",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-04T16:30:48.615Z"
+    },
+    "symbol_search_apple": {
+      "query": "/symbol_search?symbol=apple&outputsize=12&show_plan=true",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-04T16:30:56.793Z"
+    },
+    "error_401_bad_key": {
+      "query": "/quote?symbol=AAPL",
+      "httpStatus": 401,
+      "capturedAt": "2026-10-04T16:31:04.989Z"
+    },
+    "error_401_demo_limited": {
+      "query": "/time_series?symbol=SAN:BME&interval=1day&outputsize=5",
+      "httpStatus": 401,
+      "capturedAt": "2026-10-04T16:31:13.174Z"
+    },
+    "quote_batch_watchlist": {
+      "query": "/quote?symbol=AAPL,MSFT,NVDA,TSLA,SAN:BME",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-04T17:28:08.871Z",
+      "key": "personal (plan Basic); no se guarda"
+    },
+    "error_SAN_BME_time_series": {
+      "query": "/time_series?symbol=SAN&exchange=BME&interval=1day&outputsize=5&timezone=Exchange",
+      "httpStatus": 404,
+      "capturedAt": "2026-10-04T17:28:08.872Z",
+      "key": "personal (plan Basic); no se guarda"
+    },
+    "error_not_found": {
+      "query": "/time_series?symbol=ZZZQXW&interval=1day&outputsize=5&timezone=Exchange",
+      "httpStatus": 404,
+      "capturedAt": "2026-10-04T17:28:08.873Z",
+      "key": "personal (plan Basic); no se guarda"
+    }
+  }
+}

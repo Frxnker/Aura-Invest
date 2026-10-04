@@ -1,0 +1,185 @@
+{
+ "data": [
+  {
+   "symbol": "SAN",
+   "instrument_name": "Banco Santander, S.A.",
+   "exchange": "BME",
+   "mic_code": "XMAD",
+   "exchange_timezone": "Europe/Madrid",
+   "instrument_type": "Common Stock",
+   "country": "Spain",
+   "currency": "EUR",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "SAN",
+   "instrument_name": "Sanofi SA",
+   "exchange": "Euronext",
+   "mic_code": "XPAR",
+   "exchange_timezone": "Europe/Paris",
+   "instrument_type": "Common Stock",
+   "country": "France",
+   "currency": "EUR",
+   "access": {
+    "global": "Grow",
+    "plan": "Grow",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "SAN",
+   "instrument_name": "Banco Santander, S.A. Sponsored ADR",
+   "exchange": "NYSE",
+   "mic_code": "XNYS",
+   "exchange_timezone": "America/New_York",
+   "instrument_type": "American Depositary Receipt",
+   "country": "United States",
+   "currency": "USD",
+   "access": {
+    "global": "Basic",
+    "plan": "Basic",
+    "plan_business": "Basic"
+   }
+  },
+  {
+   "symbol": "SAN",
+   "instrument_name": "Santander UK Plc Preferred Stock 10.375% Perpetual",
+   "exchange": "LSE",
+   "mic_code": "XLON",
+   "exchange_timezone": "Europe/London",
+   "instrument_type": "Common Stock",
+   "country": "United Kingdom",
+   "currency": "GBp",
+   "access": {
+    "global": "Grow",
+    "plan": "Grow",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "SAN",
+   "instrument_name": "Banco Santander, S.A. CEDEAR",
+   "exchange": "BCBA",
+   "mic_code": "XBUE",
+   "exchange_timezone": "America/Argentina/Buenos_Aires",
+   "instrument_type": "Depositary Receipt",
+   "country": "Argentina",
+   "currency": "ARS",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "SAN",
+   "instrument_name": "Sanford Limited",
+   "exchange": "NZX",
+   "mic_code": "XNZE",
+   "exchange_timezone": "Pacific/Auckland",
+   "instrument_type": "Common Stock",
+   "country": "New Zealand",
+   "currency": "NZD",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "SAN",
+   "instrument_name": "Banco Santander, S.A.",
+   "exchange": "GPW",
+   "mic_code": "XWAR",
+   "exchange_timezone": "Europe/Warsaw",
+   "instrument_type": "Common Stock",
+   "country": "Poland",
+   "currency": "PLN",
+   "access": {
+    "global": "Ultra",
+    "plan": "Ultra",
+    "plan_business": "Enterprise"
+   }
+  },
+  {
+   "symbol": "SAN",
+   "instrument_name": "Banco Santander, S.A.",
+   "exchange": "VSE",
+   "mic_code": "XWBO",
+   "exchange_timezone": "Europe/Vienna",
+   "instrument_type": "Common Stock",
+   "country": "Austria",
+   "currency": "EUR",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "SAN",
+   "instrument_name": "Banco Santander, S.A. Sponsored ADR",
+   "exchange": "IEX",
+   "mic_code": "IEXG",
+   "exchange_timezone": "America/New_York",
+   "instrument_type": "American Depositary Receipt",
+   "country": "United States",
+   "currency": "USD",
+   "access": {
+    "global": "Basic",
+    "plan": "Basic",
+    "plan_business": "Basic"
+   }
+  },
+  {
+   "symbol": "SAN",
+   "instrument_name": "Sagalio Energy Ltd.",
+   "exchange": "ASX",
+   "mic_code": "XASX",
+   "exchange_timezone": "Australia/Sydney",
+   "instrument_type": "Common Stock",
+   "country": "Australia",
+   "currency": "AUD",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "SAN",
+   "instrument_name": "Seabridge Gold Inc.",
+   "exchange": "BMV",
+   "mic_code": "XMEX",
+   "exchange_timezone": "America/Swift_Current",
+   "instrument_type": "Common Stock",
+   "country": "Mexico",
+   "currency": "MXN",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "SAN",
+   "instrument_name": "Sanofi S.A.",
+   "exchange": "SIX",
+   "mic_code": "XSWX",
+   "exchange_timezone": "Europe/Zurich",
+   "instrument_type": "Common Stock",
+   "country": "Switzerland",
+   "currency": "CHF",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  }
+ ],
+ "status": "ok"
+}

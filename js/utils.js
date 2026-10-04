@@ -1,6 +1,6 @@
 /* =========================================================================
  * Aura Invest · Utilidades
- * Helpers genéricos, PRNG determinista, calendario bursátil y formato es-ES.
+ * Helpers genéricos, calendario bursátil y formato es-ES.
  * ========================================================================= */
 (() => {
 'use strict';
@@ -14,50 +14,11 @@ const mean = (arr) => arr.reduce((a, b) => a + b, 0) / (arr.length || 1);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-/** Hash FNV-1a: semilla estable por ticker. */
-function hashStr(s) {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-  return h >>> 0;
-}
-/** PRNG determinista (mulberry32). */
-function mulberry32(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-/** Normal estándar (Box-Muller polar) a partir de un PRNG uniforme. */
-function makeGauss(rng) {
-  let spare = null;
-  return () => {
-    if (spare !== null) { const s = spare; spare = null; return s; }
-    let u, v, s;
-    do { u = rng() * 2 - 1; v = rng() * 2 - 1; s = u * u + v * v; } while (s >= 1 || s === 0);
-    const m = Math.sqrt(-2 * Math.log(s) / s);
-    spare = v * m;
-    return u * m;
-  };
-}
-
 /* ---- Fechas (todas en segundos UTC; el intradía se codifica en hora local de mercado) ---- */
 const dayStart = (t) => Math.floor(t / DAY) * DAY;
 const weekdayOf = (t) => (Math.floor(t / DAY) + 4) % 7;          // 0 = domingo
 const isWeekend = (t) => { const w = weekdayOf(t); return w === 0 || w === 6; };
 
-/** Última sesión cerrada: el último día laborable anterior a hoy. */
-function lastClosedSession(now = new Date()) {
-  let t = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 1000 - DAY;
-  while (isWeekend(t)) t -= DAY;
-  return t;
-}
-function tradingDaysBack(endT, count) {
-  const out = [];
-  for (let t = endT; out.length < count; t -= DAY) if (!isWeekend(t)) out.push(t);
-  return out.reverse();
-}
 /** Próximas sesiones a partir de una fecha, tomando una de cada `step`. */
 function nextTradingDays(fromT, count, step = 1) {
   const out = [];
@@ -85,7 +46,9 @@ const fmtPct = (v, d = 2) => (Number.isFinite(v) ? fmtSigned(v, d) + '%' : '—'
 function fmtPrice(v, meta) {
   if (!Number.isFinite(v)) return '—';
   const s = nf(meta.precision).format(v);
-  return meta.currency === 'EUR' ? `${s} €` : `$${s}`;
+  if (meta.currency === 'USD') return `$${s}`;
+  if (meta.currency === 'EUR') return `${s} €`;
+  return meta.currency ? `${s} ${meta.currency}` : s;
 }
 function fmtCompact(v) {
   if (!Number.isFinite(v)) return '—';
@@ -104,13 +67,30 @@ function fmtDate(t, withTime = false) {
   if (withTime) s += ` · ${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
   return s;
 }
+/* ---- Hora local del usuario (para "actualizado a las…", no para las velas) ---- */
+const LOCAL_TIME = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit' });
+const LOCAL_DATETIME = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const fmtLocalTime = (ms) => (Number.isFinite(ms) ? LOCAL_TIME.format(ms) : '—');
+const fmtLocalDateTime = (ms) => (Number.isFinite(ms) ? LOCAL_DATETIME.format(ms) : '—');
+/** "hace 3 min", "hace 2 h", "hace 4 días". */
+function fmtAgo(ms, now = Date.now()) {
+  const s = Math.max(0, Math.round((now - ms) / 1000));
+  if (s < 45) return 'hace unos segundos';
+  if (s < 3600) return `hace ${Math.round(s / 60)} min`;
+  if (s < 86400) return `hace ${Math.round(s / 3600)} h`;
+  const d = Math.round(s / 86400);
+  return `hace ${d} ${d === 1 ? 'día' : 'días'}`;
+}
+/** Fecha UTC 'AAAA-MM-DD' (para el contador diario de créditos). */
+const utcDay = (ms) => new Date(ms).toISOString().slice(0, 10);
+
 const arrow = (v) => (v >= 0 ? '▲' : '▼');
 const dirClass = (v) => (v >= 0 ? 'up-t' : 'down-t');
 
 Aura.utils = {
   $, clamp, last, mean, sleep, esc,
-  hashStr, mulberry32, makeGauss,
-  dayStart, weekdayOf, isWeekend, lastClosedSession, tradingDaysBack, nextTradingDays, addMonthsUTC,
+  dayStart, weekdayOf, isWeekend, nextTradingDays, addMonthsUTC,
   fmtNum, fmtSigned, fmtPct, fmtPrice, fmtCompact, fmtDate, MONTHS, pad2, arrow, dirClass,
+  fmtLocalTime, fmtLocalDateTime, fmtAgo, utcDay,
 };
 })();

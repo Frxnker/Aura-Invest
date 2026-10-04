@@ -1,13 +1,15 @@
 /* =========================================================================
- * Aura Invest · Vistas: cabecera, panel AI Analytics y watchlist
- * Solo pinta: recibe el modelo ya calculado y actualiza el DOM con animaciones suaves.
+ * Aura Invest · Vistas: cabecera, estado de los datos, panel AI Analytics,
+ * watchlist y estado vacío.
+ * Solo pinta: recibe datos ya obtenidos y actualiza el DOM. Todo texto que venga
+ * de la API se inserta con textContent o pasa por `esc`.
  * ========================================================================= */
 (() => {
 'use strict';
 
-const { REDUCED_MOTION } = Aura.config;
-const { TICKERS, fetchQuote } = Aura.data;
-const { $, clamp, last, esc, fmtNum, fmtSigned, fmtPct, fmtPrice, fmtCompact, fmtDate, arrow, dirClass } = Aura.utils;
+const { REDUCED_MOTION, API } = Aura.config;
+const { $, clamp, last, esc, fmtNum, fmtSigned, fmtPct, fmtPrice, fmtCompact, fmtDate, arrow, dirClass,
+  fmtLocalTime, fmtLocalDateTime, fmtAgo } = Aura.utils;
 const state = Aura.state;
 
 /** Interpola un número en pantalla (animación suave al actualizar). */
@@ -26,17 +28,31 @@ function tween(el, to, format, dur = 750) {
   el._raf = requestAnimationFrame(step);
 }
 
-function renderHeader(q) {
+const isQuote = (q) => q && !(q instanceof Error) && Number.isFinite(q.price);
+
+/* ---- Cabecera ---- */
+
+/** Pinta la cotización; sin cotización válida, solo el identificador y guiones. */
+function renderHeader(q, id) {
+  const ok = isQuote(q);
+  const priceEl = $('#qPrice');
+  $('#qSym').textContent = ok ? q.meta.symbol : id;
+  $('#qName').textContent = ok ? `${q.meta.name} · ${q.meta.exchange}` : '';
+  $('#qName').title = ok ? `${q.meta.name} · ${q.meta.exchange} · ${q.meta.currency}` : '';
+  $('#qDate').textContent = ok && Number.isFinite(q.time) ? fmtDate(q.time).replace(/ \d{4}$/, '') : '—';
+  const chgEl = $('#qChg');
+  if (!ok) {
+    priceEl.textContent = '—'; priceEl._v = undefined; priceEl._sym = null;
+    chgEl.className = 'quote-chg';
+    chgEl.textContent = '—';
+    ['#qOpen', '#qHigh', '#qLow', '#qVol'].forEach((s) => { $(s).textContent = '—'; });
+    document.title = `${id} · Aura Invest`;
+    return;
+  }
   const meta = q.meta;
   const chg = q.price - q.prevClose, pct = (chg / q.prevClose) * 100;
-  $('#qSym').textContent = meta.symbol;
-  $('#qName').textContent = `${meta.name} · ${meta.exchange}`;
-  $('#qName').title = `${meta.name} · ${meta.exchange} · ${meta.currency}`;
-  $('#qDate').textContent = fmtDate(q.time).replace(/ \d{4}$/, '');
-  const priceEl = $('#qPrice');
   if (priceEl._sym !== meta.symbol) { priceEl._v = q.price; priceEl._sym = meta.symbol; }
   tween(priceEl, q.price, (v) => fmtPrice(v, meta));
-  const chgEl = $('#qChg');
   chgEl.className = `quote-chg ${chg >= 0 ? 'up' : 'down'}`;
   chgEl.innerHTML = `${arrow(chg)} <span class="abs">${fmtSigned(chg, meta.precision)} (</span>${fmtPct(pct)}<span class="abs">)</span>`;
   $('#qOpen').textContent = fmtNum(q.open, meta.precision);
@@ -47,11 +63,97 @@ function renderHeader(q) {
 }
 
 function renderPerf(m) {
+  if (!m) { $('#perf').textContent = ''; return; }
   const first = m.vis[0], lastBar = last(m.vis);
   const base = m.bars[m.ws - 1] ? m.bars[m.ws - 1].close : first.open;
   const pct = (lastBar.close / base - 1) * 100;
   $('#perf').innerHTML = `${m.tf.key} <b class="${dirClass(pct)}">${arrow(pct)} ${fmtPct(pct)}</b>`;
 }
+
+/* ---- Estado de los datos: fuente, actualización, mercado y retraso ---- */
+
+const STALE_MS = 5 * 60 * 1000;      // con el mercado abierto, una cotización más antigua puede ir con retraso
+const INTERVAL_TEXT = { '5min': 'de 5 min', '15min': 'de 15 min', '1h': 'horarias', '1day': 'diarias', '1week': 'semanales' };
+
+/**
+ * @param {object} o
+ * @param {object} [o.data]   resultado de fetchMarketData (source.at, source.cached)
+ * @param {object} [o.quote]  cotización (o ApiError)
+ * @param {object} [o.queue]  estado de la cola de la API (espera de cupo)
+ */
+function renderStatus({ data, quote, queue } = {}) {
+  const now = Date.now();
+  const items = [];
+  const item = (html, cls = '') => items.push(`<span class="st-item ${cls}">${html}</span>`);
+
+  if (queue && queue.waitingUntil > now) {
+    const s = Math.ceil((queue.waitingUntil - now) / 1000);
+    item(`Esperando cupo de la API (${API.perMinute} créditos/min): <b>${s} s</b>`, 'st-warn');
+  }
+  if (data) {
+    item(`Fuente: <b>${esc(data.source.provider)}</b>`);
+    item(`Velas ${INTERVAL_TEXT[data.source.interval] || esc(data.source.interval)} obtenidas a las <b>${fmtLocalTime(data.source.at)}</b> (${data.source.cached ? 'de la caché, ' : ''}${fmtAgo(data.source.at, now)})`);
+    if (data.meta.session && !data.meta.sessionExact) item('Horario de sesión aproximado (velas de 1 h)');
+  }
+  if (isQuote(quote)) {
+    item(`<span class="st-dot ${quote.isMarketOpen ? 'open' : ''}" aria-hidden="true"></span><b>${quote.isMarketOpen ? 'Mercado abierto' : 'Mercado cerrado'}</b>`);
+    item(`Última cotización: <b>${fmtLocalDateTime(quote.lastQuoteAt)}</b> (hora local)`);
+    if (quote.isMarketOpen && now - quote.lastQuoteAt > STALE_MS) {
+      item(`Puede ir con retraso: la última cotización es de ${fmtAgo(quote.lastQuoteAt, now)}`, 'st-warn');
+    } else if (quote.cached) {
+      item(`Cotización de ${fmtAgo(quote.at, now)} (caché de 1 min)`);
+    }
+  } else if (quote instanceof Error && data) {
+    item(`Sin cotización: ${esc(quote.message)}`, 'st-warn');
+  }
+  $('#statusBar').innerHTML = items.join('');
+}
+
+/* ---- Estado vacío ---- */
+
+/**
+ * Sustituye gráficos y panel por un mensaje con el motivo.
+ * @param {object} o  title, detail, apiMessage (texto de Twelve Data), actions [{ label, onClick, primary }]
+ */
+function renderEmpty({ title, detail, apiMessage = '', actions = [] }) {
+  $('#emptyTitle').textContent = title;
+  $('#emptyDetail').textContent = detail;
+  const api = $('#emptyApi');
+  api.hidden = !apiMessage;
+  api.textContent = apiMessage ? `Twelve Data: ${apiMessage}` : '';
+  const box = $('#emptyActions');
+  box.textContent = '';
+  for (const a of actions) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `btn ${a.primary ? 'primary' : ''}`;
+    b.textContent = a.label;
+    b.addEventListener('click', a.onClick);
+    box.appendChild(b);
+  }
+  $('#emptyState').hidden = false;
+  $('#aiPanel').classList.add('is-empty');
+  $('#aiEmpty').hidden = false;
+  $('#aiContext').textContent = '';
+  renderPerf(null);
+}
+
+function hideEmpty() {
+  $('#emptyState').hidden = true;
+  $('#aiPanel').classList.remove('is-empty');
+  $('#aiEmpty').hidden = true;
+}
+
+/* ---- Contador de créditos ---- */
+
+function renderUsage(s) {
+  const pill = $('#usagePill');
+  $('#usageText').textContent = `${s.creditsToday}/${s.perDay}`;
+  pill.dataset.level = s.creditsToday >= s.perDay ? 'full' : s.creditsToday >= s.perDay * 0.8 ? 'warn' : '';
+  pill.setAttribute('aria-label', `Créditos de Twelve Data usados hoy: ${s.creditsToday} de ${s.perDay}. Abrir ajustes`);
+}
+
+/* ---- Panel AI Analytics ---- */
 
 const RECO = {
   buy:  { text: 'Comprar',  icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>' },
@@ -78,7 +180,7 @@ function renderPanel(m) {
   tween($('#scoreVal'), trend.score, (x) => fmtSigned(x, 2));
   $('#factorRows').innerHTML = trend.factors.map((f) => {
     const c = f.weight * f.score;
-    return `<tr><td>${f.label}</td><td class="num">${esc(f.reading)}</td><td class="num">${fmtNum(f.weight * 100, 0)}%</td>
+    return `<tr><td>${esc(f.label)}</td><td class="num">${esc(f.reading)}</td><td class="num">${fmtNum(f.weight * 100, 0)}%</td>
       <td class="num ${Math.abs(c) < 0.005 ? '' : dirClass(c)}">${fmtSigned(c, 2)}</td></tr>`;
   }).join('');
 
@@ -113,6 +215,8 @@ function renderPanel(m) {
   $('#lvTargetSub').innerHTML = `<span class="${dirClass(adv.target - adv.entry)}">${fmtPct((adv.target / adv.entry - 1) * 100)}</span>`;
   $('#lvStop').textContent = P(adv.stop);
   $('#lvStopSub').innerHTML = `<span class="${dirClass(adv.stop - adv.entry)}">${fmtPct((adv.stop / adv.entry - 1) * 100)}</span>`;
+  // Las frases del modelo llevan <b> propios; los valores que contienen son números
+  // formateados y divisas validadas en la capa de datos.
   $('#rationale').innerHTML = m.rationale.map((s) => `<li>${s}</li>`).join('');
 
   // Animación escalonada de las tarjetas
@@ -126,18 +230,36 @@ function renderPanel(m) {
 }
 
 /* ---- Watchlist ---- */
-async function renderWatchlist() {
-  const syms = Object.keys(TICKERS);
-  if (!TICKERS[state.symbol]) syms.push(state.symbol);
-  const quotes = await Promise.all(syms.map((s) => fetchQuote(s)));
-  $('#watchlist').innerHTML = quotes.map((q) => {
-    const pct = (q.price / q.prevClose - 1) * 100;
-    return `<button class="wl-chip" data-sym="${esc(q.meta.symbol)}" aria-pressed="${q.meta.symbol === state.symbol}">
-      <span class="s">${esc(q.meta.symbol)}</span><span class="p">${fmtPrice(q.price, q.meta)}</span>
-      <span class="c ${dirClass(pct)}">${arrow(pct)} ${fmtPct(pct)}</span></button>`;
+
+const QUOTE_STATE = {
+  PLAN: 'Fuera del plan',
+  AUTH: 'Clave rechazada',
+  NO_KEY: 'Sin clave',
+  DAILY_LIMIT: 'Sin cupo hoy',
+  NOT_FOUND: 'Sin datos',
+};
+
+/**
+ * @param {string[]} ids      símbolos de la watchlist, en orden
+ * @param {Map} [quotes]      id → cotización | ApiError (sin cotizaciones: solo los nombres)
+ */
+function renderWatchlist(ids, quotes = new Map()) {
+  $('#watchlist').innerHTML = ids.map((id) => {
+    const q = quotes.get(id);
+    const pressed = id === state.symbol;
+    if (isQuote(q)) {
+      const pct = (q.price / q.prevClose - 1) * 100;
+      const label = `${q.meta.symbol}, ${fmtPrice(q.price, q.meta)}, ${fmtPct(pct)} hoy`;
+      return `<button class="wl-chip" data-sym="${esc(id)}" aria-pressed="${pressed}" aria-label="${esc(label)}">
+        <span class="s">${esc(q.meta.symbol)}</span><span class="p">${esc(fmtPrice(q.price, q.meta))}</span>
+        <span class="c ${dirClass(pct)}">${arrow(pct)} ${fmtPct(pct)}</span></button>`;
+    }
+    const why = q instanceof Error ? (QUOTE_STATE[q.code] || 'Error') : '—';
+    return `<button class="wl-chip" data-sym="${esc(id)}" data-state="error" aria-pressed="${pressed}" aria-label="${esc(`${id}: ${why}`)}"
+      ${q instanceof Error ? `title="${esc(q.message)}"` : ''}>
+      <span class="s">${esc(id)}</span><span class="c muted">${esc(why)}</span></button>`;
   }).join('');
-  state.quotes = Object.fromEntries(quotes.map((q) => [q.meta.symbol, q]));
 }
 
-Aura.panel = { renderHeader, renderPerf, renderPanel, renderWatchlist };
+Aura.panel = { renderHeader, renderPerf, renderPanel, renderWatchlist, renderStatus, renderEmpty, hideEmpty, renderUsage };
 })();

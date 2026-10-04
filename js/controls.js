@@ -1,54 +1,118 @@
 /* =========================================================================
  * Aura Invest · Controles e interacción
- * Temporalidad, toggles de indicadores, buscador de tickers, watchlist y avisos.
+ * Temporalidad, toggles de indicadores, buscador de valores (symbol_search real),
+ * watchlist y avisos.
  * ========================================================================= */
 (() => {
 'use strict';
 
 const { TIMEFRAMES } = Aura.config;
-const { TICKERS } = Aura.data;
-const { $, clamp, esc, fmtPct, dirClass } = Aura.utils;
+const { searchSymbols } = Aura.data;
+const { $, clamp, esc } = Aura.utils;
 const charts = Aura.charts;
 const state = Aura.state;
 
-/* ---- Buscador de tickers ---- */
+const SEARCH_DEBOUNCE_MS = 400;
+
+/* ---- Buscador de valores ---- */
 function initSearch(selectSymbol) {
-  const input = $('#tickerInput'), list = $('#suggest');
-  let items = [], active = 0;
+  const input = $('#tickerInput'), list = $('#suggest'), live = $('#searchStatus');
+  let items = [], active = 0, message = '', timer = null, ctrl = null, seq = 0, lastQuery = '';
 
   const open = (v) => { list.classList.toggle('open', v); input.setAttribute('aria-expanded', String(v)); };
-  const build = () => {
-    const q = input.value.trim().toUpperCase();
-    items = Object.values(TICKERS).filter((t) => !q || t.symbol.includes(q) || t.name.toUpperCase().includes(q));
-    if (q && !TICKERS[q] && /^[A-Z0-9.\-]{1,12}$/.test(q)) items.push({ symbol: q, name: 'Simular ticker con parámetros genéricos', custom: true });
-    active = clamp(active, 0, Math.max(0, items.length - 1));
-    list.innerHTML = items.length ? items.map((t, k) => {
-      const qt = state.quotes && state.quotes[t.symbol];
-      const pct = qt ? (qt.price / qt.prevClose - 1) * 100 : null;
-      return `<li role="option" id="opt-${k}" data-sym="${esc(t.symbol)}" aria-selected="${k === active}">
-        <span class="s-sym">${esc(t.symbol)}</span><span class="s-name">${esc(t.name)}</span>
-        <span class="s-chg ${pct == null ? 'muted' : dirClass(pct)}">${pct == null ? '' : fmtPct(pct)}</span></li>`;
-    }).join('') : '<li class="muted" aria-disabled="true">Sin resultados</li>';
-    input.setAttribute('aria-activedescendant', items.length ? `opt-${active}` : '');
-  };
-  const choose = (sym) => { input.value = ''; open(false); input.blur(); selectSymbol(sym); };
 
-  input.addEventListener('focus', () => { active = 0; build(); open(true); });
-  input.addEventListener('input', () => { active = 0; build(); open(true); });
-  input.addEventListener('blur', () => setTimeout(() => open(false), 120));
+  function render() {
+    if (!items.length) {
+      list.innerHTML = message ? `<li class="s-info" role="presentation">${esc(message)}</li>` : '';
+      input.setAttribute('aria-activedescendant', '');
+      return;
+    }
+    active = clamp(active, 0, items.length - 1);
+    list.innerHTML = items.map((t, k) => {
+      const where = [t.exchange, t.currency, t.country].filter(Boolean).map(esc).join(' · ');
+      const plan = t.available
+        ? '<span class="s-plan ok">Plan gratuito</span>'
+        : `<span class="s-plan no">Requiere ${esc(t.plan)}</span>`;
+      const label = `${t.symbol}, ${t.name}, ${[t.exchange, t.currency].filter(Boolean).join(', ')}, ${t.available ? 'incluido en el plan gratuito' : `requiere el plan ${t.plan}`}`;
+      return `<li role="option" id="opt-${k}" data-k="${k}" aria-selected="${k === active}" aria-label="${esc(label)}">
+        <span class="s-sym">${esc(t.symbol)}</span>
+        <span class="s-name">${esc(t.name)}<small>${where}</small></span>${plan}</li>`;
+    }).join('');
+    input.setAttribute('aria-activedescendant', `opt-${active}`);
+    const sel = list.querySelector('[aria-selected="true"]');
+    if (sel) sel.scrollIntoView({ block: 'nearest' });
+  }
+
+  function hint() {
+    items = [];
+    message = 'Escribe un nombre o un ticker (p. ej. Apple o MSFT).';
+    render();
+  }
+
+  async function run(q) {
+    const my = ++seq;
+    lastQuery = q;
+    if (ctrl) ctrl.abort();
+    ctrl = new AbortController();
+    items = [];
+    message = 'Buscando en Twelve Data…';
+    render();
+    open(true);
+    try {
+      const res = await searchSymbols(q, { signal: ctrl.signal });
+      if (my !== seq) return;
+      items = res;
+      active = 0;
+      message = res.length ? '' : `Sin resultados para «${q}».`;
+    } catch (err) {
+      if (my !== seq || err.code === 'ABORTED') return;
+      items = [];
+      message = `No se pudo buscar: ${err.message}`;
+    }
+    render();
+    live.textContent = items.length ? `${items.length} resultados. Usa las flechas para elegir.` : message;
+  }
+
+  const choose = (item) => {
+    input.value = '';
+    open(false);
+    input.blur();
+    selectSymbol(item.id);
+  };
+
+  input.addEventListener('focus', () => {
+    if (input.value.trim()) { render(); open(true); } else { hint(); open(true); }
+  });
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (!q) { seq++; hint(); return; }
+    timer = setTimeout(() => run(q), SEARCH_DEBOUNCE_MS);   // espera a que deje de escribir
+  });
+  input.addEventListener('blur', () => setTimeout(() => open(false), 150));
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown') { active = Math.min(items.length - 1, active + 1); build(); e.preventDefault(); }
-    else if (e.key === 'ArrowUp') { active = Math.max(0, active - 1); build(); e.preventDefault(); }
-    else if (e.key === 'Enter' && items[active]) { choose(items[active].symbol); }
-    else if (e.key === 'Escape') { open(false); input.blur(); }
+    if (e.key === 'ArrowDown') { if (items.length) { active = Math.min(items.length - 1, active + 1); render(); } e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { if (items.length) { active = Math.max(0, active - 1); render(); } e.preventDefault(); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      const q = input.value.trim();
+      if (items.length && q === lastQuery) choose(items[active]);
+      else if (q) { clearTimeout(timer); run(q); }               // Intro sin esperar al retardo
+    } else if (e.key === 'Escape') { open(false); input.blur(); }
   });
   list.addEventListener('mousedown', (e) => {
-    const li = e.target.closest('li[data-sym]');
-    if (li) { e.preventDefault(); choose(li.dataset.sym); }
+    const li = e.target.closest('li[data-k]');
+    if (li) { e.preventDefault(); choose(items[Number(li.dataset.k)]); }
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === '/' && document.activeElement !== input) { e.preventDefault(); input.focus(); }
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
+    if (e.key === '/' && !typing && !document.querySelector('dialog[open]')) { e.preventDefault(); input.focus(); }
   });
+
+  return {
+    /** Abre el buscador con un texto ya escrito (p. ej. para buscar alternativas). */
+    searchFor(text) { input.value = text; input.focus(); clearTimeout(timer); run(text); },
+  };
 }
 
 /* ---- Barra de herramientas y watchlist ---- */
@@ -78,10 +142,12 @@ function initToolbar(selectTimeframe, selectSymbol) {
   $('#chartStack').addEventListener('pointerleave', charts.hideTooltip);
 }
 
+let search = null;
+
 /** Conecta todos los controles; las acciones de cambio las decide main.js. */
 function init({ selectTimeframe, selectSymbol }) {
   initToolbar(selectTimeframe, selectSymbol);
-  initSearch(selectSymbol);
+  search = initSearch(selectSymbol);
 }
 
 /* ---- Avisos ---- */
@@ -94,5 +160,5 @@ function toast(msg, kind = '') {
   toastTimer = setTimeout(() => { t.className = `toast ${kind}`; }, 4200);
 }
 
-Aura.controls = { init, toast };
+Aura.controls = { init, toast, searchFor: (text) => search && search.searchFor(text) };
 })();

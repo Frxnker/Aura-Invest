@@ -253,7 +253,7 @@ function fitAll() {
 function renderLegend() {
   const m = state.model;
   $('#legend').innerHTML = `
-    <div class="lg-title"><b>${esc(m.meta.symbol)}</b><span>${esc(m.meta.name)} · ${m.tf.key} · ${m.tf.intervalLabel}</span></div>
+    <div class="lg-title"><b>${esc(m.meta.symbol)}</b><span>${m.meta.name && m.meta.name !== m.meta.symbol ? `${esc(m.meta.name)} · ` : ''}${m.tf.key} · ${m.tf.intervalLabel}</span></div>
     <div class="lg-items">
       <span class="lg-item ${state.show.ema ? '' : 'off'}"><i style="background:${COLORS.ema}"></i>EMA 20 <b id="lgEma">—</b></span>
       <span class="lg-item ${state.show.sma ? '' : 'off'}"><i style="background:${COLORS.sma}"></i>SMA 50 <b id="lgSma">—</b></span>
@@ -326,6 +326,19 @@ function render(m) {
   updateReadouts(null);
 }
 
+/** Vacía los tres gráficos (sin datos que mostrar: sin clave, error o símbolo no disponible). */
+function clear() {
+  hideTooltip();
+  srLines.forEach((l) => CH.candles.removePriceLine(l));
+  srLines = [];
+  [CH.candles, CH.ema, CH.sma, CH.coneCenter, CH.coneUpper, CH.coneLower, CH.volume, CH.volSma, CH.rsiLine].forEach((s) => s.setData([]));
+  CH.coneFill.setPoints([]);
+  state.coneClamp = null;
+  $('#legend').textContent = '';
+  $('#volLabel').textContent = 'Volumen';
+  $('#rsiLabel').textContent = 'RSI 14';
+}
+
 /** Aplica un toggle de la barra de herramientas sobre el gráfico ya renderizado. */
 function applyToggle(key) {
   const m = state.model;
@@ -338,5 +351,5 @@ function applyToggle(key) {
   updateReadouts(null);
 }
 
-Aura.charts = { init: initCharts, render, applyToggle, fitAll, hideTooltip };
+Aura.charts = { init: initCharts, render, clear, applyToggle, fitAll, hideTooltip };
 })();
