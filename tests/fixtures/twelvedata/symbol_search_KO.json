@@ -1,0 +1,215 @@
+{
+ "data": [
+  {
+   "symbol": "KO",
+   "instrument_name": "The Coca-Cola Company",
+   "exchange": "NYSE",
+   "mic_code": "XNYS",
+   "exchange_timezone": "America/New_York",
+   "instrument_type": "Common Stock",
+   "country": "United States",
+   "currency": "USD",
+   "access": {
+    "global": "Basic",
+    "plan": "Basic",
+    "plan_business": "Basic"
+   }
+  },
+  {
+   "symbol": "KO",
+   "instrument_name": "Coca-Cola Company CDR",
+   "exchange": "BCBA",
+   "mic_code": "XBUE",
+   "exchange_timezone": "America/Argentina/Buenos_Aires",
+   "instrument_type": "Depositary Receipt",
+   "country": "Argentina",
+   "currency": "ARS",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "KO",
+   "instrument_name": "The Coca-Cola Company",
+   "exchange": "BMV",
+   "mic_code": "XMEX",
+   "exchange_timezone": "America/Swift_Current",
+   "instrument_type": "Common Stock",
+   "country": "Mexico",
+   "currency": "MXN",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "KO",
+   "instrument_name": "The Coca-Cola Company",
+   "exchange": "VSE",
+   "mic_code": "XWBO",
+   "exchange_timezone": "Europe/Vienna",
+   "instrument_type": "Common Stock",
+   "country": "Austria",
+   "currency": "EUR",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "KO",
+   "instrument_name": "The Coca-Cola Company",
+   "exchange": "BVL",
+   "mic_code": "XLIM",
+   "exchange_timezone": "America/Lima",
+   "instrument_type": "Common Stock",
+   "country": "Peru",
+   "currency": "PEN",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "KO",
+   "instrument_name": "The Coca-Cola Company",
+   "exchange": "IEX",
+   "mic_code": "IEXG",
+   "exchange_timezone": "America/New_York",
+   "instrument_type": "Common Stock",
+   "country": "United States",
+   "currency": "USD",
+   "access": {
+    "global": "Basic",
+    "plan": "Basic",
+    "plan_business": "Basic"
+   }
+  },
+  {
+   "symbol": "KO",
+   "instrument_name": "The Coca-Cola Company",
+   "exchange": "BVS",
+   "mic_code": "XSGO",
+   "exchange_timezone": "America/Santiago",
+   "instrument_type": "Common Stock",
+   "country": "Chile",
+   "currency": "USD",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "KO",
+   "instrument_name": "The Coca-Cola Company",
+   "exchange": "SIX",
+   "mic_code": "XSWX",
+   "exchange_timezone": "Europe/Zurich",
+   "instrument_type": "Common Stock",
+   "country": "Switzerland",
+   "currency": "CHF",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "KOTA",
+   "instrument_name": "DMS Propertindo Tbk.",
+   "exchange": "IDX",
+   "mic_code": "XIDX",
+   "exchange_timezone": "Asia/Jakarta",
+   "instrument_type": "Common Stock",
+   "country": "Indonesia",
+   "currency": "IDR",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "KOTAKBANK",
+   "instrument_name": "Kotak Mahindra Bank Ltd.",
+   "exchange": "NSE",
+   "mic_code": "XNSE",
+   "exchange_timezone": "Asia/Kolkata",
+   "instrument_type": "Common Stock",
+   "country": "India",
+   "currency": "INR",
+   "access": {
+    "global": "Grow",
+    "plan": "Grow",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "KOZAL",
+   "instrument_name": "Turk Altin Isletmeleri A.S.",
+   "exchange": "BIST",
+   "mic_code": "XIST",
+   "exchange_timezone": "Europe/Istanbul",
+   "instrument_type": "Common Stock",
+   "country": "Turkey",
+   "currency": "TRY",
+   "access": {
+    "global": "Grow",
+    "plan": "Grow",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "KOTAKBANK",
+   "instrument_name": "Kotak Mahindra Bank Ltd.",
+   "exchange": "BSE",
+   "mic_code": "XBOM",
+   "exchange_timezone": "Asia/Kolkata",
+   "instrument_type": "Common Stock",
+   "country": "India",
+   "currency": "INR",
+   "access": {
+    "global": "Grow",
+    "plan": "Grow",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "KOZAA",
+   "instrument_name": "Koza Anadolu Metal Madencilik A.S.",
+   "exchange": "BIST",
+   "mic_code": "XIST",
+   "exchange_timezone": "Europe/Istanbul",
+   "instrument_type": "Common Stock",
+   "country": "Turkey",
+   "currency": "TRY",
+   "access": {
+    "global": "Grow",
+    "plan": "Grow",
+    "plan_business": "Venture"
+   }
+  },
+  {
+   "symbol": "KOHN.B1",
+   "instrument_name": "KOHN.B1",
+   "exchange": "TASE",
+   "mic_code": "XTAE",
+   "exchange_timezone": "Asia/Jerusalem",
+   "instrument_type": "Common Stock",
+   "country": "Israel",
+   "currency": "ILA",
+   "access": {
+    "global": "Pro",
+    "plan": "Pro",
+    "plan_business": "Venture"
+   }
+  }
+ ],
+ "status": "ok"
+}

@@ -17,6 +17,10 @@ const COLORS = {
   rsi: '#c7cbe0', volSma: 'rgba(199,203,224,0.55)',
   grid: 'rgba(255,255,255,0.045)', border: '#1b1f2b', text: '#8b92a5',
   crosshair: 'rgba(200,205,225,0.38)', label: '#272c3b',
+  bb: 'rgba(199,203,224,0.7)', bbFill: 'rgba(199,203,224,0.06)',
+  macd: '#0ea5c6', macdSignal: '#c9820f',
+  // Comparar: valor principal + hasta 4 (paleta validada en modo oscuro: CVD y contraste)
+  compare: ['#8b6cf0', '#0ea5c6', '#c9820f', '#d6589b', '#5b9e45'],
 };
 const CHART_BG = '#0b0d13';
 

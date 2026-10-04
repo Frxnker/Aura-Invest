@@ -1,5 +1,5 @@
 /* =========================================================================
- * Aura Invest · Vistas: cabecera, estado de los datos, panel AI Analytics,
+ * Aura Invest · Vistas: cabecera, estado de los datos, panel de análisis del modelo,
  * watchlist y estado vacío.
  * Solo pinta: recibe datos ya obtenidos y actualiza el DOM. Todo texto que venga
  * de la API se inserta con textContent o pasa por `esc`.
@@ -90,6 +90,9 @@ function renderStatus({ data, quote, queue } = {}) {
     const s = Math.ceil((queue.waitingUntil - now) / 1000);
     item(`Esperando cupo de la API (${API.perMinute} créditos/min): <b>${s} s</b>`, 'st-warn');
   }
+  if (data && data.source.stale) {
+    item(`Datos antiguos: velas de ${fmtAgo(data.source.at, now)}; no se pudieron actualizar (${esc(data.source.error ? data.source.error.message : 'error')})`, 'st-warn');
+  }
   if (data) {
     item(`Fuente: <b>${esc(data.source.provider)}</b>`);
     item(`Velas ${INTERVAL_TEXT[data.source.interval] || esc(data.source.interval)} obtenidas a las <b>${fmtLocalTime(data.source.at)}</b> (${data.source.cached ? 'de la caché, ' : ''}${fmtAgo(data.source.at, now)})`);
@@ -98,7 +101,9 @@ function renderStatus({ data, quote, queue } = {}) {
   if (isQuote(quote)) {
     item(`<span class="st-dot ${quote.isMarketOpen ? 'open' : ''}" aria-hidden="true"></span><b>${quote.isMarketOpen ? 'Mercado abierto' : 'Mercado cerrado'}</b>`);
     item(`Última cotización: <b>${fmtLocalDateTime(quote.lastQuoteAt)}</b> (hora local)`);
-    if (quote.isMarketOpen && now - quote.lastQuoteAt > STALE_MS) {
+    if (quote.stale) {
+      item(`Cotización antigua (${fmtAgo(quote.at, now)}): no se pudo actualizar (${esc(quote.error ? quote.error.message : 'error')})`, 'st-warn');
+    } else if (quote.isMarketOpen && now - quote.lastQuoteAt > STALE_MS) {
       item(`Puede ir con retraso: la última cotización es de ${fmtAgo(quote.lastQuoteAt, now)}`, 'st-warn');
     } else if (quote.cached) {
       item(`Cotización de ${fmtAgo(quote.at, now)} (caché de 1 min)`);
@@ -153,12 +158,12 @@ function renderUsage(s) {
   pill.setAttribute('aria-label', `Créditos de Twelve Data usados hoy: ${s.creditsToday} de ${s.perDay}. Abrir ajustes`);
 }
 
-/* ---- Panel AI Analytics ---- */
+/* ---- Panel de análisis del modelo ---- */
 
 const RECO = {
-  buy:  { text: 'Comprar',  icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>' },
-  hold: { text: 'Mantener', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 9h14M5 15h14"/></svg>' },
-  sell: { text: 'Vender',   icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 9v8H9"/></svg>' },
+  buy:  { text: 'Alcista',  icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>' },
+  hold: { text: 'Neutral',  icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 9h14M5 15h14"/></svg>' },
+  sell: { text: 'Bajista',  icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 9v8H9"/></svg>' },
 };
 
 function renderPanel(m) {
@@ -201,7 +206,7 @@ function renderPanel(m) {
   $('#fcDrift').textContent = fmtPct(fc.muAnnual * 100, 1);
   $('#fcDate').textContent = fmtDate(fc.horizonT);
 
-  // 3. AI Advisory
+  // 3. Señal del modelo
   const reco = $('#reco');
   reco.dataset.action = adv.action;
   $('#recoIcon').innerHTML = RECO[adv.action].icon;
@@ -240,23 +245,29 @@ const QUOTE_STATE = {
 };
 
 /**
- * @param {string[]} ids      símbolos de la watchlist, en orden
+ * @param {object[]} items    watchlist guardada [{ id, name, exchange }] en su orden
  * @param {Map} [quotes]      id → cotización | ApiError (sin cotizaciones: solo los nombres)
  */
-function renderWatchlist(ids, quotes = new Map()) {
-  $('#watchlist').innerHTML = ids.map((id) => {
+function renderWatchlist(items, quotes = new Map()) {
+  if (!items.length) {
+    $('#watchlist').innerHTML = '<span class="wl-empty">Watchlist vacía: añade valores desde el buscador o con la estrella.</span>';
+    return;
+  }
+  $('#watchlist').innerHTML = items.map(({ id, name }) => {
     const q = quotes.get(id);
     const pressed = id === state.symbol;
+    const title = name ? ` title="${esc(name)}"` : '';
     if (isQuote(q)) {
       const pct = (q.price / q.prevClose - 1) * 100;
-      const label = `${q.meta.symbol}, ${fmtPrice(q.price, q.meta)}, ${fmtPct(pct)} hoy`;
-      return `<button class="wl-chip" data-sym="${esc(id)}" aria-pressed="${pressed}" aria-label="${esc(label)}">
-        <span class="s">${esc(q.meta.symbol)}</span><span class="p">${esc(fmtPrice(q.price, q.meta))}</span>
-        <span class="c ${dirClass(pct)}">${arrow(pct)} ${fmtPct(pct)}</span></button>`;
+      const old = q.stale ? `, dato antiguo de ${fmtAgo(q.at)}` : '';
+      const label = `${q.meta.symbol}, ${fmtPrice(q.price, q.meta)}, ${fmtPct(pct)} hoy${old}`;
+      return `<button class="wl-chip${q.stale ? ' is-stale' : ''}" data-sym="${esc(id)}" aria-pressed="${pressed}" aria-label="${esc(label)}"${title}>
+        <span class="s">${esc(id)}</span><span class="p">${esc(fmtPrice(q.price, q.meta))}</span>
+        <span class="c ${dirClass(pct)}">${arrow(pct)} ${fmtPct(pct)}</span>${q.stale ? '<span class="old" aria-hidden="true">antiguo</span>' : ''}</button>`;
     }
     const why = q instanceof Error ? (QUOTE_STATE[q.code] || 'Error') : '—';
     return `<button class="wl-chip" data-sym="${esc(id)}" data-state="error" aria-pressed="${pressed}" aria-label="${esc(`${id}: ${why}`)}"
-      ${q instanceof Error ? `title="${esc(q.message)}"` : ''}>
+      title="${esc(q instanceof Error ? q.message : name || id)}">
       <span class="s">${esc(id)}</span><span class="c muted">${esc(why)}</span></button>`;
   }).join('');
 }

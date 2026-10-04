@@ -143,5 +143,44 @@ function supportResistance(bars, ws, atrV) {
   return { supports, resistances };
 }
 
-Aura.indicators = { sma, ema, rsi, atr, stdev, linregSlope, lastCross, supportResistance };
+/* ---- Indicadores solo visuales (no entran en la puntuación del modelo) ---- */
+
+/**
+ * MACD (12, 26, 9): línea = EMA 12 − EMA 26; señal = EMA 9 de la línea; histograma = línea − señal.
+ * Las EMA usan la misma semilla (media simple) que `ema()`. La señal empieza cuando hay 9 valores
+ * de la línea.
+ */
+function macd(closes, fast = 12, slow = 26, signal = 9) {
+  const n = closes.length;
+  const f = ema(closes, fast), s = ema(closes, slow);
+  const line = closes.map((_, i) => (f[i] != null && s[i] != null ? f[i] - s[i] : null));
+  const start = line.findIndex((v) => v != null);
+  const sig = new Array(n).fill(null);
+  if (start >= 0) {
+    const tail = ema(line.slice(start), signal);
+    tail.forEach((v, k) => { sig[start + k] = v; });
+  }
+  const hist = line.map((v, i) => (v != null && sig[i] != null ? v - sig[i] : null));
+  return { line, signal: sig, hist };
+}
+
+/**
+ * Bandas de Bollinger (20, 2): media = SMA 20; bandas = media ± 2 desviaciones típicas
+ * poblacionales de los últimos 20 cierres (la definición habitual de Bollinger).
+ */
+function bollinger(closes, period = 20, mult = 2) {
+  const mid = sma(closes, period);
+  const upper = new Array(closes.length).fill(null), lower = new Array(closes.length).fill(null);
+  for (let i = period - 1; i < closes.length; i++) {
+    const m = mid[i];
+    let v = 0;
+    for (let j = i - period + 1; j <= i; j++) v += (closes[j] - m) ** 2;
+    const sd = Math.sqrt(v / period);
+    upper[i] = m + mult * sd;
+    lower[i] = m - mult * sd;
+  }
+  return { mid, upper, lower };
+}
+
+Aura.indicators = { sma, ema, rsi, atr, stdev, linregSlope, lastCross, supportResistance, macd, bollinger };
 })();

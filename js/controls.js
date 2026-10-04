@@ -33,10 +33,14 @@ function initSearch(selectSymbol) {
       const plan = t.available
         ? '<span class="s-plan ok">Plan gratuito</span>'
         : `<span class="s-plan no">Requiere ${esc(t.plan)}</span>`;
-      const label = `${t.symbol}, ${t.name}, ${[t.exchange, t.currency].filter(Boolean).join(', ')}, ${t.available ? 'incluido en el plan gratuito' : `requiere el plan ${t.plan}`}`;
+      const inList = Aura.watchlist.has(t.id);
+      const label = `${t.symbol}, ${t.name}, ${[t.exchange, t.currency].filter(Boolean).join(', ')}, ${t.available ? 'incluido en el plan gratuito' : `requiere el plan ${t.plan}`}${inList ? ', ya en tu watchlist' : ''}`;
+      const add = inList
+        ? '<span class="s-add is-in" aria-hidden="true" title="Ya está en la watchlist">✓</span>'
+        : '<span class="s-add" data-add aria-hidden="true" title="Añadir a la watchlist (Alt + Intro)">＋</span>';
       return `<li role="option" id="opt-${k}" data-k="${k}" aria-selected="${k === active}" aria-label="${esc(label)}">
         <span class="s-sym">${esc(t.symbol)}</span>
-        <span class="s-name">${esc(t.name)}<small>${where}</small></span>${plan}</li>`;
+        <span class="s-name">${esc(t.name)}<small>${where}</small></span>${plan}${add}</li>`;
     }).join('');
     input.setAttribute('aria-activedescendant', `opt-${active}`);
     const sel = list.querySelector('[aria-selected="true"]');
@@ -73,6 +77,15 @@ function initSearch(selectSymbol) {
     live.textContent = items.length ? `${items.length} resultados. Usa las flechas para elegir.` : message;
   }
 
+  /** Añade un resultado a la watchlist sin abrirlo. */
+  function addItem(item) {
+    const res = Aura.watchlist.add({ id: item.id, name: item.name, exchange: item.exchange, currency: item.currency });
+    const msg = res.ok ? `${item.id} añadido a la watchlist.` : res.error;
+    live.textContent = msg;
+    Aura.controls.toast(msg, res.ok ? '' : 'error');
+    render();
+  }
+
   const choose = (item) => {
     input.value = '';
     open(false);
@@ -96,13 +109,17 @@ function initSearch(selectSymbol) {
     else if (e.key === 'Enter') {
       e.preventDefault();
       const q = input.value.trim();
-      if (items.length && q === lastQuery) choose(items[active]);
+      if (e.altKey && items.length && q === lastQuery) addItem(items[active]);
+      else if (items.length && q === lastQuery) choose(items[active]);
       else if (q) { clearTimeout(timer); run(q); }               // Intro sin esperar al retardo
     } else if (e.key === 'Escape') { open(false); input.blur(); }
   });
   list.addEventListener('mousedown', (e) => {
     const li = e.target.closest('li[data-k]');
-    if (li) { e.preventDefault(); choose(items[Number(li.dataset.k)]); }
+    if (!li) return;
+    e.preventDefault();
+    if (e.target.closest('[data-add]')) addItem(items[Number(li.dataset.k)]);
+    else if (!e.target.closest('.s-add')) choose(items[Number(li.dataset.k)]);
   });
   document.addEventListener('keydown', (e) => {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);

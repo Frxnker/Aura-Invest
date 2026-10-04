@@ -241,7 +241,7 @@ function buildAdvisory(trend, fc, sr) {
   return { action, entry, stop, target, rr, entryBasis, stopBasis, targetBasis };
 }
 
-/** Justificación en 3–4 frases: cruce de medias, RSI, volumen y plan operativo. */
+/** Justificación en 3–4 frases: cruce de medias, RSI, volumen y escenario de la señal. */
 function buildRationale(m) {
   const { trend, adv, tf, meta } = m;
   const d = trend.details;
@@ -280,9 +280,9 @@ function buildRationale(m) {
   else out.push(`${vol}, en línea con lo habitual: no confirma ni contradice el movimiento.`);
 
   const rr = fmtNum(adv.rr, 1);
-  if (adv.action === 'buy') out.push(`Plan: entrada en ${P(adv.entry)}, stop ${adv.stopBasis} (${P(adv.stop)}) y objetivo en ${P(adv.target)} (${adv.targetBasis}); riesgo/beneficio 1:${rr}.`);
-  else if (adv.action === 'sell') out.push(`Plan: reducir o vender en ${P(adv.entry)}, stop ${adv.stopBasis} (${P(adv.stop)}) y objetivo en ${P(adv.target)} (${adv.targetBasis}); riesgo/beneficio 1:${rr}.`);
-  else out.push(`Sin ventaja estadística clara (${trend.probs.bull}% alcista frente a ${trend.probs.bear}% bajista): mejor esperar un ${adv.entryBasis} en ${P(adv.entry)} antes de abrir posición.`);
+  if (adv.action === 'buy') out.push(`Escenario alcista: entrada de referencia en ${P(adv.entry)}, stop ${adv.stopBasis} (${P(adv.stop)}) y objetivo en ${P(adv.target)} (${adv.targetBasis}); riesgo/beneficio 1:${rr}.`);
+  else if (adv.action === 'sell') out.push(`Escenario bajista: referencia en ${P(adv.entry)}, stop ${adv.stopBasis} (${P(adv.stop)}) y objetivo en ${P(adv.target)} (${adv.targetBasis}); riesgo/beneficio 1:${rr}.`);
+  else out.push(`Sin ventaja estadística clara (${trend.probs.bull}% alcista frente a ${trend.probs.bear}% bajista): el nivel de referencia sería un ${adv.entryBasis} en ${P(adv.entry)}.`);
 
   return out;
 }

@@ -11,7 +11,7 @@ const { LWC, TIMEFRAMES, API } = Aura.config;
 const { fetchMarketData, fetchQuotes } = Aura.data;
 const { $, fmtLocalTime } = Aura.utils;
 const { analyze } = Aura.model;
-const { charts, panel, controls, settings, store } = Aura;
+const { charts, panel, controls, settings, store, watchlist, monitor, watchlistUI, alertsUI, portfolioUI, compareUI } = Aura;
 const { client } = Aura.api;
 const state = Aura.state;
 
@@ -59,8 +59,6 @@ function describeError(err, id) {
 
 /* ---- Ciclo de carga ---- */
 
-let watchlistLoaded = false;   // ¿se ha cotizado ya la watchlist con la clave actual?
-
 function showEmpty(err, id) {
   state.model = null;
   state.view = null;
@@ -72,23 +70,21 @@ function showEmpty(err, id) {
 async function load() {
   const id = ++state.reqId;
   const sym = state.symbol, tf = state.tf;
-  try { history.replaceState(null, '', `#t=${encodeURIComponent(sym)}&tf=${tf}`); } catch (_) { /* file:// restringido */ }
+  updateHash();
   const stale = () => id !== state.reqId;
 
+  watchlistUI.updateStar();
   if (!store.getApiKey()) {
     panel.renderHeader(null, sym);
-    panel.renderWatchlist(state.watchlist);
+    panel.renderWatchlist(watchlist.items());
     showEmpty({ code: 'NO_KEY' }, sym);
     return;
   }
 
   document.body.classList.add('is-loading');
-  // Cotización del valor en paralelo con las velas. La primera vez (o tras cambiar la
-  // clave) va en el mismo lote que la watchlist; después solo se pide la del valor
-  // actual, para no gastar un crédito por cada valor de la watchlist en cada cambio.
-  const ids = watchlistLoaded ? [sym] : [...new Set([sym, ...state.watchlist])];
-  watchlistLoaded = true;
-  const quotesP = fetchQuotes(ids, { priority: 2 }).then((q) => { q.forEach((v, k) => state.quotes.set(k, v)); return q; });
+  // Cotización del valor en paralelo con las velas (la de la watchlist la lleva el
+  // monitor en lote; si es reciente, sale de la caché y no gasta créditos).
+  const quotesP = fetchQuotes([sym], { priority: 2 }).then((q) => { q.forEach((v, k) => state.quotes.set(k, v)); return q; });
   try {
     const data = await fetchMarketData(sym, tf, { priority: 3 });
     const quotes = await quotesP;
@@ -104,7 +100,9 @@ async function load() {
     panel.renderPerf(m);
     panel.renderPanel(m);
     panel.renderStatus({ data, quote, queue: state.queue });
-    panel.renderWatchlist(state.watchlist, state.quotes);
+    if (state.compare.length) loadCompare();
+    if (quote && !(quote instanceof Error)) watchlist.learn(sym, quote.meta);
+    panel.renderWatchlist(watchlist.items(), state.quotes);
     settings.reportKeyOk();
   } catch (err) {
     if (stale()) return;
@@ -114,16 +112,65 @@ async function load() {
     const quotes = await quotesP;
     if (stale()) return;
     panel.renderHeader(quotes.get(sym), sym);
-    panel.renderWatchlist(state.watchlist, state.quotes);
+    panel.renderWatchlist(watchlist.items(), state.quotes);
   } finally {
     if (!stale()) document.body.classList.remove('is-loading');
   }
 }
 
 function selectSymbol(sym) {
+  if (state.page !== 'market') selectView('market');
   if (sym === state.symbol) return;
   state.symbol = sym;
+  Aura.drawingTools.reset();
+  if (state.compare.includes(sym)) { state.compare = state.compare.filter((x) => x !== sym); compareUI.render(); }
   load();
+}
+
+/** Comparar: pide las velas de cada valor en la temporalidad actual y las superpone. */
+async function loadCompare() {
+  const m = state.model;
+  if (!m) { compareUI.render([]); return; }
+  if (!state.compare.length) { compareUI.render(charts.renderCompare(m, [])); return; }
+  const ids = [...state.compare];
+  compareUI.render([]);
+  const others = await Promise.all(ids.map((id) => fetchMarketData(id, state.tf, { priority: 2 })
+    .then((data) => ({ id, data }), (error) => ({ id, error }))));
+  if (state.model !== m || ids.join() !== state.compare.join()) return;   // algo cambió mientras tanto
+  compareUI.render(charts.renderCompare(m, others));
+}
+
+/* ---- Vistas: Mercado / Cartera ---- */
+
+/** Enlace directo: #t=AAPL&tf=6M (&view=cartera). Nunca lleva la clave. */
+function updateHash() {
+  const view = state.page === 'portfolio' ? '&view=cartera' : '';
+  try { history.replaceState(null, '', `#t=${encodeURIComponent(state.symbol)}&tf=${state.tf}${view}`); } catch (_) { /* file:// restringido */ }
+}
+
+function selectView(page, { focus = false } = {}) {
+  state.page = page;
+  const market = page === 'market';
+  $('#viewMarket').hidden = !market;
+  $('#viewPortfolio').hidden = market;
+  for (const [tab, on] of [['#tabMarket', market], ['#tabPortfolio', !market]]) {
+    $(tab).setAttribute('aria-selected', String(on));
+    $(tab).tabIndex = on ? 0 : -1;
+  }
+  updateHash();
+  if (!market) portfolioUI.refresh();
+  if (focus) $(market ? '#tabMarket' : '#tabPortfolio').focus();
+}
+
+function initViews() {
+  $('#tabMarket').addEventListener('click', () => selectView('market'));
+  $('#tabPortfolio').addEventListener('click', () => selectView('portfolio'));
+  $('.views').addEventListener('keydown', (e) => {
+    const map = { ArrowLeft: 'market', Home: 'market', ArrowRight: 'portfolio', End: 'portfolio' };
+    if (!map[e.key]) return;
+    e.preventDefault();
+    selectView(map[e.key], { focus: true });
+  });
 }
 
 function selectTimeframe(tf) {
@@ -148,6 +195,60 @@ function onQueueStatus(s) {
   }
 }
 
+/* ---- Watchlist, vigilancia y alertas ---- */
+
+let monitorStatus = null;
+
+function scheduleText() {
+  const s = monitorStatus;
+  if (!s) return '';
+  if (s.running) return 'Comprobando ahora…';
+  if (s.reason === 'nokey') return 'Sin clave de API: las alertas no se comprueban.';
+  if (s.reason === 'budget') return 'Comprobación automática en pausa: el cupo de hoy está casi agotado.';
+  if (s.reason === 'off') return 'Comprobación automática desactivada en Ajustes: las alertas se comprueban al abrir la app o con «Comprobar ahora».';
+  if (!s.nextAt) return '';
+  return `Última comprobación: ${s.lastRun ? fmtLocalTime(s.lastRun) : '—'}. Próxima automática a las ${fmtLocalTime(s.nextAt)} (cada ${Math.round(s.delay / 60000)} min, según el cupo del plan).`;
+}
+
+/** Nombre, bolsa y divisa del valor que se está viendo (para añadirlo a la watchlist). */
+function metaFor(id) {
+  const q = state.quotes.get(id);
+  if (q && !(q instanceof Error) && q.meta) return { name: q.meta.name, exchange: q.meta.exchange, currency: q.meta.currency };
+  const info = Aura.data.knownInstrument(id);
+  return info ? { name: info.name, exchange: info.exchange, currency: info.currency } : {};
+}
+
+function wireMonitor() {
+  monitor.onQuotes((quotes) => {
+    quotes.forEach((q, id) => {
+      state.quotes.set(id, q);
+      if (q && !(q instanceof Error) && q.meta) watchlist.learn(id, q.meta);
+    });
+    panel.renderWatchlist(watchlist.items(), state.quotes);
+    // Cotización más reciente del valor que se está viendo
+    const cur = quotes.get(state.symbol);
+    if (state.view && cur && !(cur instanceof Error)) {
+      state.view.quote = cur;
+      panel.renderHeader(cur, state.symbol);
+      panel.renderStatus({ ...state.view, queue: state.queue });
+    }
+  });
+  monitor.onStatus((s) => {
+    monitorStatus = s;
+    watchlistUI.renderSchedule(s);
+    if ($('#alertsDialog').open) $('#alSchedule').textContent = scheduleText();
+  });
+  monitor.onFired((ev) => alertsUI.announce(ev));
+
+  watchlist.onChange((items) => {
+    panel.renderWatchlist(items, state.quotes);
+    watchlistUI.updateStar();
+    const missing = items.map((w) => w.id).filter((id) => !state.quotes.has(id));
+    if (missing.length) monitor.refreshIds(missing);
+    monitor.reschedule();
+  });
+}
+
 function init() {
   if (!LWC) {
     $('#chartStack').insertAdjacentHTML('beforeend',
@@ -159,15 +260,30 @@ function init() {
   const t = (params.get('t') || '').toUpperCase();
   if (/^[A-Z0-9.\-/:]{1,24}$/.test(t)) state.symbol = t;
   if (TIMEFRAMES[params.get('tf')]) state.tf = params.get('tf');
+  const startView = params.get('view') === 'cartera' ? 'portfolio' : 'market';
 
   charts.init();
   controls.init({ selectTimeframe, selectSymbol });
-  settings.init({ onKeyChange: () => { watchlistLoaded = false; state.quotes.clear(); load(); } });
+  watchlistUI.init({ refresh: () => monitor.runCheck({ force: true }), metaFor });
+  alertsUI.init({ checkNow: () => monitor.runCheck({ force: true }), evaluateCached: () => monitor.checkAlertsQuick(), scheduleText });
+  portfolioUI.init({ openSymbol: selectSymbol });
+  compareUI.init({ onChange: loadCompare });
+  Aura.drawingTools.init();
+  Aura.backtestUI.init();
+  initViews();
+  wireMonitor();
+  settings.init({
+    onKeyChange: () => { state.quotes.clear(); load().then(() => monitor.runCheck()); },
+    onRefreshChange: () => monitor.reschedule(),
+  });
   client.onStatus(onQueueStatus);
   onQueueStatus(client.status());
   if (store.problem) controls.toast(store.problem, 'error');
   setInterval(() => { if (state.view) panel.renderStatus({ ...state.view, queue: state.queue }); }, 30000);
-  load();
+  panel.renderWatchlist(watchlist.items());
+  // Primero el valor que se ve; después, la watchlist y las alertas (en lote)
+  load().finally(() => monitor.start());
+  if (startView === 'portfolio') selectView('portfolio');
 }
 
 window.addEventListener('error', (e) => controls.toast(`Error: ${e.message}`, 'error'));

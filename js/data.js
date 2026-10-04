@@ -24,6 +24,13 @@ const INSTRUMENT_TTL = 30 * 86400;     // lo aprendido de symbol_search (plan, n
 const UNAVAILABLE_TTL = 86400;         // un símbolo que la API ha rechazado por plan
 const SESSION_TTL = 30 * 86400;        // horario de sesión deducido de velas de 5/15 min
 
+/**
+ * Si la API falla por uno de estos motivos y hay una respuesta anterior en caché
+ * (aunque haya caducado), se devuelve marcada como antigua (`stale`) junto al error.
+ * Sin clave, fuera del plan o símbolo inexistente no hay "datos antiguos" que valgan.
+ */
+const STALE_OK = new Set(['NETWORK', 'SERVER', 'MINUTE_LIMIT', 'DAILY_LIMIT', 'AUTH']);
+
 /* ---------------------------------------------------------------------------
  * Parseo
  * ------------------------------------------------------------------------- */
@@ -103,6 +110,7 @@ function parseQuote(q) {
     meta: {
       symbol: q.symbol, name: q.name || q.symbol, exchange: q.exchange || '', mic: q.mic_code || '',
       currency: currencyOf(q, q.symbol), precision: precisionFor(price),
+      pair: String(q.symbol || '').includes('/'),
     },
     price,
     prevClose: num(q.previous_close),
@@ -166,21 +174,30 @@ function barsPerDayFor(tf, session) {
   return tf.kind === 'weekly' ? 0.2 : 1;
 }
 
+/**
+ * Petición de velas común a gráficos y cartera: plan conocido, caché por intervalo y,
+ * si la API falla, la última respuesta guardada marcada como antigua.
+ */
+async function requestSeries(id, interval, outputsize, priority) {
+  const known = planError(id);
+  if (known) throw known;
+  const params = { ...idParams(id), interval, outputsize, timezone: 'Exchange' };
+  try {
+    return await client.get('/time_series', params, { ttl: CACHE_TTL[interval], priority });
+  } catch (err) {
+    rememberRejection(id, err);
+    const old = STALE_OK.has(err.code) && client.cacheGetAny(client.keyFor('/time_series', params));
+    if (!old) throw err;
+    return { data: old.data, cached: true, at: old.t, stale: true, error: err };
+  }
+}
+
+const sourceOf = (res, interval) => ({ provider: API.provider, at: res.at, cached: res.cached, interval, stale: res.stale === true, error: res.error || null });
+
 /** Velas de una temporalidad, con metadatos y origen. */
 async function fetchMarketData(id, tfKey, { priority = 3 } = {}) {
   const tf = TIMEFRAMES[tfKey];
-  const known = planError(id);
-  if (known) throw known;
-
-  let res;
-  try {
-    res = await client.get('/time_series',
-      { ...idParams(id), interval: tf.interval, outputsize: tf.outputsize, timezone: 'Exchange' },
-      { ttl: CACHE_TTL[tf.interval], priority });
-  } catch (err) {
-    rememberRejection(id, err);
-    throw err;
-  }
+  const res = await requestSeries(id, tf.interval, tf.outputsize, priority);
   const bars = parseSeries(res.data);
   if (bars.length < 30) throw new ApiError('NOT_FOUND', 'Twelve Data devuelve demasiado pocas velas para analizar este símbolo.');
 
@@ -200,13 +217,36 @@ async function fetchMarketData(id, tfKey, { priority = 3 } = {}) {
     exchange: m.exchange || (info && info.exchange) || '',
     mic: m.mic_code || '', timezone: m.exchange_timezone || '', type: m.type || '',
     currency: currencyOf(m, id),
+    pair: id.includes('/'),
     precision: precisionFor(last(bars).close),
     session, sessionExact,
   };
   return {
     meta, bars,
     barsPerDay: barsPerDayFor(tf, session),
-    source: { provider: API.provider, at: res.at, cached: res.cached, interval: tf.interval },
+    source: sourceOf(res, tf.interval),
+  };
+}
+
+/** Tamaños de petición para el histórico diario: 400 comparte caché con 6M/YTD/1A. */
+const HISTORY_SIZES = [400, 800, 1600, 3200, 5000];
+
+/**
+ * Cierres diarios desde una fecha (para la cartera: tipo de cambio de cada operación
+ * y evolución del valor). Devuelve { closes: [{ date, close }], currency, from, complete, source }.
+ * `complete` es false si Twelve Data no llega hasta `fromDate` (más de 5000 sesiones).
+ */
+async function fetchDailyHistory(id, fromDate, { priority = 1 } = {}) {
+  const days = Math.ceil((Date.now() - Date.parse(`${fromDate}T00:00:00Z`)) / 86400000) + 30;
+  const outputsize = HISTORY_SIZES.find((n) => n >= days) || HISTORY_SIZES.at(-1);
+  const res = await requestSeries(id, '1day', outputsize, priority);
+  const closes = parseSeries(res.data).map((b) => ({ date: new Date(b.time * 1000).toISOString().slice(0, 10), close: b.close }));
+  const m = res.data.meta || {};
+  return {
+    closes, currency: currencyOf(m, id),
+    from: closes.length ? closes[0].date : null,
+    complete: closes.length > 0 && (closes[0].date <= fromDate || closes.length < outputsize),
+    source: sourceOf(res, '1day'),
   };
 }
 
@@ -253,10 +293,16 @@ async function fetchQuotes(ids, { priority = 2, force = false } = {}) {
       }
     } catch (err) {
       if (chunk.length === 1) rememberRejection(chunk[0], err);
-      chunk.forEach((id) => out.set(id, err));
+      chunk.forEach((id) => out.set(id, staleQuote(id, err) || err));
     }
   }
   return out;
+}
+
+/** Última cotización guardada aunque haya caducado, marcada como antigua (o null). */
+function staleQuote(id, err) {
+  const old = STALE_OK.has(err.code) && client.cacheGetAny(`quote|${id}`);
+  return old ? { ...parseQuote(old.data), id, at: old.t, cached: true, stale: true, error: err } : null;
 }
 
 /**
@@ -277,12 +323,35 @@ async function searchSymbols(text, { signal } = {}) {
   }
   const items = (res.data.data || []).map(parseSearchItem);
   items.forEach(rememberInstrument);
-  // Primero lo que entra en el plan gratuito; dentro de cada grupo, el orden de Twelve Data
-  return items.sort((a, b) => Number(b.available) - Number(a.available));
+  // Primero lo que entra en el plan gratuito; dentro de cada grupo, el orden de Twelve Data.
+  // Una misma cotización de EE. UU. aparece en varias bolsas (p. ej. KO en NYSE e IEX) con el
+  // mismo identificador: se deja solo la primera.
+  const seen = new Set();
+  return items.sort((a, b) => Number(b.available) - Number(a.available)).filter((i) => !seen.has(i.id) && seen.add(i.id));
+}
+
+/**
+ * Velas diarias completas (OHLCV) para el backtest. `outputsize` hasta 5000 sesiones
+ * (≈ 20 años); cuesta 1 crédito y queda en caché 1 h.
+ */
+async function fetchDailyBars(id, outputsize, { priority = 2 } = {}) {
+  const res = await requestSeries(id, '1day', outputsize, priority);
+  const bars = parseSeries(res.data);
+  if (!bars.length) throw new ApiError('NOT_FOUND', MESSAGES.NOT_FOUND);
+  const m = res.data.meta || {};
+  const info = knownInstrument(id);
+  return {
+    meta: {
+      id, symbol: m.symbol || idParams(id).symbol, name: (info && info.name) || m.symbol || id,
+      exchange: m.exchange || '', currency: currencyOf(m, id), pair: id.includes('/'),
+      precision: precisionFor(last(bars).close), session: null, sessionExact: true,
+    },
+    bars, barsPerDay: 1, source: sourceOf(res, '1day'),
+  };
 }
 
 Aura.data = {
-  fetchMarketData, fetchQuotes, searchSymbols, knownInstrument,
+  fetchMarketData, fetchDailyHistory, fetchDailyBars, fetchQuotes, searchSymbols, knownInstrument,
   // expuestos para las pruebas
   parseDateTime, parseSeries, parseQuote, parseSearchItem, inferSession, precisionFor, idParams, barsPerDayFor,
 };

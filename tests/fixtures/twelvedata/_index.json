@@ -68,6 +68,18 @@
       "httpStatus": 404,
       "capturedAt": "2026-10-04T17:28:08.873Z",
       "key": "personal (plan Basic); no se guarda"
+    },
+    "symbol_search_KO": {
+      "query": "/symbol_search?symbol=KO&outputsize=15&show_plan=true",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-04T17:58:03.063Z",
+      "key": "sin clave"
+    },
+    "time_series_EURUSD_1day": {
+      "query": "/time_series?symbol=EUR/USD&interval=1day&outputsize=400&timezone=Exchange",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-04T18:09:47.779Z",
+      "key": "demo"
     }
   }
 }

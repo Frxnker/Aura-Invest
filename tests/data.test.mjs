@@ -77,7 +77,7 @@ test('quote real: precio, cierre anterior, estado del mercado y horas', () => {
   assert.equal(q.isMarketOpen, false);
   assert.equal(q.lastQuoteAt, 1790971140 * 1000);
   assert.equal(q.time, Date.UTC(2026, 9, 2) / 1000);
-  assert.deepEqual(q.meta, { symbol: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ', mic: 'XNGS', currency: 'USD', precision: 2 });
+  assert.deepEqual(q.meta, { symbol: 'AAPL', name: 'Apple Inc.', exchange: 'NASDAQ', mic: 'XNGS', currency: 'USD', precision: 2, pair: false });
 });
 
 /* ---- fetchMarketData ---- */
@@ -260,4 +260,77 @@ test('la app no contiene el simulador ni datos inventados', () => {
   assert.equal(files.some((s) => /simulad|simulator|mulberry/i.test(s)), false);
   const html = readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   assert.equal(/simulad/i.test(html), false);
+});
+
+/* ---- Si la API falla: datos antiguos de la caché, marcados ---- */
+
+test('velas: si la API falla y hay caché caducada, se devuelve marcada como antigua', async () => {
+  let fail = null;
+  const fetch = realTwelveData(() => fail);
+  const { Aura, clock } = app({ fetch });
+  const ok = await Aura.data.fetchMarketData('AAPL', '6M');
+  assert.equal(ok.source.stale, false);
+  clock.advance(2 * 3600 * 1000);                              // la caché diaria (1 h) ha caducado
+  for (const [name, res] of [
+    ['red', new TypeError('Failed to fetch')],
+    ['servidor', { status: 503, body: { code: 503, status: 'error', message: 'Service Unavailable' } }],
+    ['cupo diario', { status: 429, body: { code: 429, status: 'error', message: 'You have run out of API credits for the day.' } }],
+  ]) {
+    fail = res;
+    const old = await Aura.data.fetchMarketData('AAPL', '6M');
+    assert.equal(old.source.stale, true, name);
+    assert.ok(old.source.error && old.source.error.code, name);
+    assert.equal(old.bars.length, ok.bars.length, name);
+    assert.equal(old.source.at, ok.source.at, `${name}: conserva la hora real de los datos`);
+  }
+});
+
+test('sin caché previa, o si el fallo es de plan/símbolo, no hay datos antiguos: error', async () => {
+  const fetch = realTwelveData((u) => (u.searchParams.get('symbol') === 'AAPL' ? new TypeError('Failed to fetch') : null));
+  const { Aura } = app({ fetch });
+  assert.equal((await Aura.data.fetchMarketData('AAPL', '6M').catch((e) => e)).code, 'NETWORK');
+  assert.equal((await Aura.data.fetchMarketData('ZZZQXW', '6M').catch((e) => e)).code, 'NOT_FOUND');
+});
+
+test('cotizaciones: si el lote falla, las que había en caché vuelven marcadas como antiguas', async () => {
+  let fail = false;
+  const batch = td('quote_batch_watchlist');
+  const fetch = fakeFetch(() => (fail ? new TypeError('Failed to fetch') : { body: { AAPL: batch.AAPL, MSFT: batch.MSFT } }));
+  const { Aura, clock } = app({ fetch });
+  await Aura.data.fetchQuotes(['AAPL', 'MSFT']);
+  clock.advance(5 * 60000);
+  fail = true;
+  const res = await Aura.data.fetchQuotes(['AAPL', 'MSFT', 'NVDA']);
+  assert.equal(res.get('AAPL').stale, true);
+  assert.equal(res.get('AAPL').price, 333.69);
+  assert.equal(res.get('AAPL').error.code, 'NETWORK');
+  assert.equal(res.get('NVDA').code, 'NETWORK', 'sin caché: error');
+});
+
+test('búsqueda real de KO: sin duplicados de la misma cotización en varias bolsas de EE. UU.', async () => {
+  const fetch = fakeFetch(() => ({ body: td('symbol_search_KO') }));
+  const { Aura } = app({ fetch });
+  const ids = plain(await Aura.data.searchSymbols('KO')).map((i) => i.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.equal(ids[0], 'KO');
+  assert.equal(td('symbol_search_KO').data.filter((d) => d.symbol === 'KO' && d.country === 'United States').length > 1, true, 'la respuesta real trae KO repetido');
+});
+
+/* ---- Histórico diario para la cartera ---- */
+
+test('histórico diario: tamaño según la fecha de inicio y caché compartida con 6M/YTD/1A', async () => {
+  const fetch = realTwelveData((u) => (u.searchParams.get('symbol') === 'EUR/USD' ? { body: td('time_series_EURUSD_1day') } : null));
+  const { Aura, clock } = app({ fetch });
+  await Aura.data.fetchMarketData('AAPL', '6M');
+  const h = await Aura.data.fetchDailyHistory('AAPL', '2025-10-01');      // 369 días + 30 de margen ≤ 400
+  assert.equal(fetch.calls.length, 1, 'mismo outputsize=400: sale de la caché');
+  assert.equal(h.closes.at(-1).date, '2026-10-02');
+  assert.equal(h.currency, 'USD');
+  assert.equal(h.complete, true);
+  const fx = await Aura.data.fetchDailyHistory('EUR/USD', '2025-10-01');
+  assert.equal(fx.currency, 'USD');
+  assert.deepEqual(fetch.calls.at(-1).params, { symbol: 'EUR/USD', interval: '1day', outputsize: '400', timezone: 'Exchange' });
+  assert.equal(new Date(clock.now()).toISOString().slice(0, 10), '2026-10-05');
+  await Aura.data.fetchDailyHistory('EUR/USD', '2023-01-02').catch(() => {});
+  assert.equal(fetch.calls.at(-1).params.outputsize, '1600', 'desde 2023: ~1.400 días → 1600');
 });

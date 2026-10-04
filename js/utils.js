@@ -41,11 +41,17 @@ function addMonthsUTC(t, months) {
 const NF = {};
 const nf = (d) => (NF[d] ||= new Intl.NumberFormat('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d }));
 const fmtNum = (v, d = 2) => (Number.isFinite(v) ? nf(d).format(v) : '—');
-const fmtSigned = (v, d = 2) => (Number.isFinite(v) ? (v > 0 ? '+' : v < 0 ? '−' : '') + nf(d).format(Math.abs(v)) : '—');
+/** Con signo (+/−); el signo sale del valor ya redondeado, así nunca aparece "−0,00". */
+function fmtSigned(v, d = 2) {
+  if (!Number.isFinite(v)) return '—';
+  const r = Number(v.toFixed(d));
+  return (r > 0 ? '+' : r < 0 ? '−' : '') + nf(d).format(Math.abs(r));
+}
 const fmtPct = (v, d = 2) => (Number.isFinite(v) ? fmtSigned(v, d) + '%' : '—');
 function fmtPrice(v, meta) {
   if (!Number.isFinite(v)) return '—';
   const s = nf(meta.precision).format(v);
+  if (meta.pair) return meta.currency ? `${s} ${meta.currency}` : s;   // pares de divisas: 1,1712 USD
   if (meta.currency === 'USD') return `$${s}`;
   if (meta.currency === 'EUR') return `${s} €`;
   return meta.currency ? `${s} ${meta.currency}` : s;

@@ -236,8 +236,11 @@ function createClient({ fetch: fetchFn, store, now = () => Date.now(), wait = (m
     return p;
   }
 
+  /** Entrada de caché aunque haya caducado (para mostrar datos antiguos si la API falla). */
+  const cacheGetAny = (key) => mem.get(key) || store.getCache(key) || null;
+
   return {
-    get, status, cacheGet, cachePut,
+    get, status, cacheGet, cachePut, cacheGetAny, keyFor: cacheKey,
     onStatus(f) { listeners.add(f); return () => listeners.delete(f); },
     clearMemoryCache: () => mem.clear(),
   };

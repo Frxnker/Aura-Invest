@@ -35,7 +35,7 @@
            role="combobox" aria-expanded="false" aria-controls="suggest" aria-autocomplete="list"
            aria-label="Buscar valor por nombre o ticker" aria-describedby="searchHelp" />
     <kbd aria-hidden="true">/</kbd>
-    <span class="sr-only" id="searchHelp">Escribe y espera un momento; usa las flechas para elegir y Intro para abrir.</span>
+    <span class="sr-only" id="searchHelp">Escribe y espera un momento; usa las flechas para elegir, Intro para abrir y Alt más Intro para añadir a la watchlist.</span>
     <ul id="suggest" class="suggest" role="listbox" aria-label="Resultados de la búsqueda"></ul>
     <span class="sr-only" id="searchStatus" role="status" aria-live="polite"></span>
   </div>
@@ -59,6 +59,13 @@
   </div>
 
   <div class="top-actions">
+    <button class="icon-btn icon-btn-lg star-btn" id="watchBtn" type="button" aria-pressed="false" aria-label="Añadir a la watchlist" title="Añadir a la watchlist">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9z"/></svg>
+    </button>
+    <button class="icon-btn icon-btn-lg bell-btn" id="alertsBtn" type="button" aria-haspopup="dialog" aria-label="Alertas" title="Alertas">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
+      <span class="badge" id="alertsBadge" hidden></span>
+    </button>
     <button class="usage-pill mono" id="usagePill" type="button" title="Créditos de Twelve Data usados hoy desde este navegador">
       <span id="usageText">0/800</span>
     </button>
@@ -68,9 +75,24 @@
   </div>
 </header>
 
-<nav class="watchlist" id="watchlist" aria-label="Lista de seguimiento"></nav>
+<div class="subbar">
+<div class="views" role="tablist" aria-label="Vista">
+  <button type="button" role="tab" id="tabMarket" aria-controls="viewMarket" aria-selected="true">Mercado</button>
+  <button type="button" role="tab" id="tabPortfolio" aria-controls="viewPortfolio" aria-selected="false" tabindex="-1">Cartera</button>
+</div>
+<nav class="watchlist" aria-label="Watchlist">
+  <div class="wl-chips" id="watchlist"></div>
+  <div class="wl-tools">
+    <span class="wl-status" id="wlStatus" aria-live="polite"></span>
+    <button class="icon-btn" id="wlRefresh" type="button" aria-label="Actualizar cotizaciones de la watchlist" title="Actualizar cotizaciones">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+    </button>
+    <button class="btn btn-sm" id="wlEdit" type="button" aria-haspopup="dialog">Editar</button>
+  </div>
+</nav>
+</div>
 
-<main class="layout">
+<main class="layout" id="viewMarket" role="tabpanel" aria-labelledby="tabMarket">
   <!-- =======================================================================
        MÓDULO 1 · DASHBOARD DE GRÁFICOS
        ======================================================================= -->
@@ -86,6 +108,15 @@
         <button class="tg" data-toggle="sma" aria-pressed="true"><span class="sw" style="background:var(--sma)"></span>SMA 50</button>
         <button class="tg" data-toggle="sr" aria-pressed="true"><span class="sw dash" style="color:var(--ink-2)"></span>S/R</button>
         <button class="tg" data-toggle="cone" aria-pressed="true"><span class="sw dash" style="color:var(--aura)"></span>Proyección 3M</button>
+        <button class="tg" data-toggle="bb" aria-pressed="false"><span class="sw" style="background:rgba(199,203,224,0.7)"></span>Bollinger</button>
+        <button class="tg" data-toggle="macd" aria-pressed="false"><span class="sw" style="background:#0ea5c6"></span>MACD</button>
+        <button class="tg" id="compareBtn" type="button" aria-haspopup="dialog" aria-pressed="false"><span class="sw" style="background:linear-gradient(90deg,#0ea5c6,#c9820f,#d6589b)"></span>Comparar<span class="cmp-count"></span></button>
+        <span class="tb-sep" aria-hidden="true"></span>
+        <button class="tg" type="button" data-draw="hline" aria-pressed="false" title="Línea horizontal">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12h18"/></svg>Horizontal</button>
+        <button class="tg" type="button" data-draw="trend" aria-pressed="false" title="Línea de tendencia">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19 20 5"/><circle cx="4" cy="19" r="1.6"/><circle cx="20" cy="5" r="1.6"/></svg>Tendencia</button>
+        <button class="tg" type="button" id="drawListBtn" aria-haspopup="dialog">Dibujos<span class="draw-count"></span></button>
         <button class="icon-btn" id="fitBtn" title="Ajustar vista" aria-label="Ajustar vista">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
         </button>
@@ -98,10 +129,15 @@
       <div class="pane pane-main" id="paneMain">
         <div class="chart-host" id="chartMain"></div>
         <div class="legend" id="legend"></div>
+        <p class="draw-hint" id="drawHint" role="status" aria-live="polite"></p>
       </div>
       <div class="pane pane-vol" id="paneVol">
         <div class="chart-host" id="chartVol"></div>
         <div class="pane-label" id="volLabel">Volumen</div>
+      </div>
+      <div class="pane pane-macd" id="paneMacd" hidden>
+        <div class="chart-host" id="chartMacd"></div>
+        <div class="pane-label" id="macdLabel">MACD 12, 26, 9</div>
       </div>
       <div class="pane pane-rsi" id="paneRsi">
         <div class="chart-host" id="chartRsi"></div>
@@ -120,11 +156,11 @@
   </section>
 
   <!-- =======================================================================
-       MÓDULO 2 · AI ANALYTICS
+       MÓDULO 2 · ANÁLISIS DEL MODELO
        ======================================================================= -->
-  <aside class="ai-panel" id="aiPanel" aria-label="AI Analytics">
+  <aside class="ai-panel" id="aiPanel" aria-label="Análisis del modelo">
     <div class="ai-head">
-      <div class="ai-title"><span class="aura-dot" aria-hidden="true"></span>AI Analytics</div>
+      <div class="ai-title"><span class="aura-dot" aria-hidden="true"></span>Análisis del modelo</div>
       <div class="ai-sub" id="aiContext"></div>
     </div>
 
@@ -183,17 +219,17 @@
       </dl>
     </article>
 
-    <!-- 3. AI Advisory -->
+    <!-- 3. Señal del modelo -->
     <article class="card" id="cardAdvisory">
       <header class="card-head">
-        <h2>AI Advisory</h2>
+        <h2>Señal del modelo</h2>
         <span class="tag" id="rrTag">R/B —</span>
       </header>
       <div class="reco" id="reco" data-action="hold" aria-live="polite">
         <span class="reco-icon" id="recoIcon" aria-hidden="true"></span>
         <div>
           <div class="reco-text" id="recoText">—</div>
-          <div class="reco-sub">Recomendación táctica · <span id="recoTf"></span></div>
+          <div class="reco-sub">Lectura técnica · <span id="recoTf"></span></div>
         </div>
       </div>
       <div class="levels">
@@ -204,12 +240,131 @@
       <ul class="rationale" id="rationale"></ul>
     </article>
 
+    <button type="button" class="btn btn-sm bt-open" id="btOpen" aria-haspopup="dialog">Backtest: ¿qué tal habría funcionado este modelo?</button>
     <p class="model-note">
       Modelo estadístico: puntuación multifactor ponderada (medias, RSI y volumen) convertida en probabilidades;
       proyección mediante paseo aleatorio geométrico con deriva ajustada y volatilidad histórica.
     </p>
   </aside>
 </main>
+
+<!-- =========================================================================
+     CARTERA
+     ========================================================================= -->
+<main class="pf" id="viewPortfolio" role="tabpanel" aria-labelledby="tabPortfolio" hidden>
+  <header class="pf-head">
+    <div>
+      <h1 class="pf-title">Cartera</h1>
+      <p class="hint" id="pfFx"></p>
+    </div>
+    <div class="pf-actions">
+      <label class="pf-base" for="pfBase">Moneda base
+        <select class="field field-sm" id="pfBase"><option value="EUR">EUR</option><option value="USD">USD</option></select>
+      </label>
+      <button type="button" class="btn btn-sm" id="pfRefresh">Actualizar</button>
+      <button type="button" class="btn btn-sm" id="pfExportJson">Exportar JSON</button>
+      <button type="button" class="btn btn-sm" id="pfImportBtn">Importar JSON</button>
+      <input type="file" id="pfImportFile" accept="application/json,.json" hidden />
+      <button type="button" class="btn btn-sm" id="pfExportCsv">Exportar CSV</button>
+    </div>
+  </header>
+  <div class="pf-status" id="pfStatus" role="status" aria-live="polite"></div>
+
+  <section class="pf-summary" id="pfSummary" aria-label="Resumen de la cartera"></section>
+
+  <div class="pf-grid">
+    <section class="card" aria-labelledby="pfPosTitle">
+      <div class="card-head"><h2 id="pfPosTitle">Posiciones</h2><span class="tag">Coste FIFO</span></div>
+      <div class="table-wrap" tabindex="0" role="region" aria-labelledby="pfPosTitle"><table class="pf-table" id="pfPositions"></table></div>
+      <p class="hint">Coste FIFO: las primeras acciones compradas son las primeras vendidas (criterio fiscal en España). El coste medio por acción se muestra solo como dato informativo.</p>
+    </section>
+    <section class="card" aria-labelledby="pfAllocTitle">
+      <div class="card-head"><h2 id="pfAllocTitle">Reparto</h2><span class="tag" id="pfAllocTag"></span></div>
+      <ul class="alloc" id="pfAlloc"></ul>
+    </section>
+  </div>
+
+  <section class="card" aria-labelledby="pfEvoTitle">
+    <div class="card-head"><h2 id="pfEvoTitle">Evolución</h2><span class="tag" id="pfEvoTag"></span></div>
+    <div class="pf-legend mono" id="pfEvoLegend" aria-live="off"></div>
+    <div class="pf-chart" id="pfChart"></div>
+    <p class="hint" id="pfEvoNote"></p>
+  </section>
+
+  <section class="card" aria-labelledby="pfTxTitle">
+    <div class="card-head">
+      <h2 id="pfTxTitle">Operaciones</h2>
+      <button type="button" class="btn btn-sm" id="pfUndo" disabled>Deshacer</button>
+    </div>
+    <form id="txForm" class="form-grid tx-form" novalidate aria-labelledby="txFormTitle">
+      <h3 id="txFormTitle" class="span-all">Nueva operación</h3>
+      <div class="field-wrap">
+        <label class="field-label" for="txType">Tipo</label>
+        <select class="field" id="txType">
+          <option value="buy">Compra</option><option value="sell">Venta</option><option value="dividend">Dividendo</option>
+        </select>
+      </div>
+      <div class="field-wrap">
+        <label class="field-label" for="txSymbol">Valor (ticker)</label>
+        <input class="field" id="txSymbol" list="txSymbols" autocomplete="off" spellcheck="false" autocapitalize="characters" />
+        <datalist id="txSymbols"></datalist>
+      </div>
+      <div class="field-wrap">
+        <label class="field-label" for="txDate">Fecha</label>
+        <input class="field" id="txDate" type="date" />
+      </div>
+      <div class="field-wrap">
+        <label class="field-label" for="txQty" id="txQtyLabel">Cantidad (acciones)</label>
+        <input class="field" id="txQty" type="text" inputmode="decimal" autocomplete="off" />
+      </div>
+      <div class="field-wrap">
+        <label class="field-label" for="txPrice" id="txPriceLabel">Precio por acción</label>
+        <input class="field" id="txPrice" type="text" inputmode="decimal" autocomplete="off" />
+      </div>
+      <div class="field-wrap">
+        <label class="field-label" for="txFees" id="txFeesLabel">Comisiones</label>
+        <input class="field" id="txFees" type="text" inputmode="decimal" autocomplete="off" placeholder="0" />
+      </div>
+      <div class="field-wrap">
+        <label class="field-label" for="txCurrency">Divisa</label>
+        <input class="field" id="txCurrency" list="txCurrencies" maxlength="3" autocomplete="off" spellcheck="false" autocapitalize="characters" />
+        <datalist id="txCurrencies"><option value="EUR"></option><option value="USD"></option><option value="GBP"></option><option value="CHF"></option><option value="JPY"></option><option value="CAD"></option></datalist>
+      </div>
+      <div class="field-wrap">
+        <label class="field-label" for="txFx" id="txFxLabel">Tipo de cambio (opcional)</label>
+        <input class="field" id="txFx" type="text" inputmode="decimal" autocomplete="off" aria-describedby="txFxHint" />
+      </div>
+      <div class="field-wrap span-all">
+        <label class="field-label" for="txNote">Nota (opcional)</label>
+        <input class="field" id="txNote" maxlength="200" autocomplete="off" />
+      </div>
+      <p class="hint span-all" id="txFxHint"></p>
+      <div class="btn-row span-all">
+        <button type="submit" class="btn primary" id="txSave">Añadir operación</button>
+        <button type="button" class="btn" id="txCancel" hidden>Cancelar edición</button>
+      </div>
+      <p class="key-status span-all" id="txMsg" role="status" aria-live="polite"></p>
+    </form>
+    <div class="table-wrap" tabindex="0" role="region" aria-labelledby="pfTxTitle"><table class="pf-table" id="pfTxTable"></table></div>
+  </section>
+</main>
+
+<dialog class="dialog" id="importDialog" aria-labelledby="impTitle">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <h2 id="impTitle">Importar cartera</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Cancelar importación">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <div id="impPreview"></div>
+    <p class="hint warn-box">Importar <b>reemplaza</b> todas tus operaciones actuales. Podrás deshacerlo justo después con «Deshacer».</p>
+    <div class="btn-row">
+      <button type="button" class="btn primary" id="impConfirm">Reemplazar cartera</button>
+      <button type="button" class="btn" id="impCancel">Cancelar</button>
+    </div>
+  </div>
+</dialog>
 
 <footer class="footer">
   <p class="disclaimer">
@@ -218,6 +373,196 @@
   </p>
   <p>Datos de mercado: <a href="https://twelvedata.com/" target="_blank" rel="noopener">Twelve Data</a> · Gráficos: <a href="https://www.tradingview.com/" target="_blank" rel="noopener">TradingView Lightweight Charts™</a></p>
 </footer>
+
+<!-- =========================================================================
+     WATCHLIST
+     ========================================================================= -->
+<dialog class="dialog" id="watchlistDialog" aria-labelledby="wlTitle">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <h2 id="wlTitle">Watchlist</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Cerrar watchlist">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <p class="hint" id="wlHint"></p>
+    <ol class="manage-list" id="wlList" aria-labelledby="wlTitle"></ol>
+    <p class="key-status" id="wlMsg" role="status" aria-live="polite"></p>
+    <section class="dialog-section" aria-labelledby="wlAutoTitle">
+      <h3 id="wlAutoTitle">Actualización</h3>
+      <p class="hint" id="wlSchedule"></p>
+      <div class="btn-row"><button type="button" class="btn" id="wlRefreshNow">Actualizar ahora</button></div>
+    </section>
+  </div>
+</dialog>
+
+<!-- =========================================================================
+     ALERTAS
+     ========================================================================= -->
+<dialog class="dialog dialog-wide" id="alertsDialog" aria-labelledby="alTitle">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <h2 id="alTitle">Alertas</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Cerrar alertas">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <p class="hint warn-box">
+      Las alertas se comprueban al abrir la app y mientras esté abierta, al ritmo que permite tu plan de Twelve Data.
+      <b>Con la app cerrada no avisan</b>: no hay ningún servidor vigilando. Si la pestaña queda en segundo plano, el
+      navegador puede ralentizarla o suspenderla (por ejemplo, las pestañas en suspensión de Edge) y las comprobaciones
+      se retoman al volver a ella; para evitarlo, excluye este sitio de la suspensión en la configuración del navegador.
+    </p>
+    <div class="notif-row">
+      <p class="hint" id="alNotifText"></p>
+      <button type="button" class="btn btn-sm" id="alNotifBtn"></button>
+    </div>
+
+    <section class="dialog-section" aria-labelledby="alFormTitle">
+      <h3 id="alFormTitle">Nueva alerta</h3>
+      <form id="alForm" class="form-grid" novalidate>
+        <div class="field-wrap">
+          <label class="field-label" for="alSymbol">Valor</label>
+          <select class="field" id="alSymbol"></select>
+        </div>
+        <div class="field-wrap">
+          <label class="field-label" for="alType">Condición</label>
+          <select class="field" id="alType">
+            <option value="price_above">Precio por encima o igual a…</option>
+            <option value="price_below">Precio por debajo o igual a…</option>
+            <option value="day_change">Variación del día ≥ X %</option>
+            <option value="ema_cross">Cruce EMA 20 / SMA 50</option>
+            <option value="rsi">RSI 14 en sobrecompra o sobreventa</option>
+            <option value="signal">La señal del modelo pasa a…</option>
+          </select>
+        </div>
+        <div class="field-wrap" data-for="value">
+          <label class="field-label" for="alValue" id="alValueLabel">Precio</label>
+          <input class="field" id="alValue" type="number" inputmode="decimal" step="any" min="0" />
+        </div>
+        <div class="field-wrap" data-for="dir">
+          <label class="field-label" for="alDir" id="alDirLabel">Sentido</label>
+          <select class="field" id="alDir"></select>
+        </div>
+        <div class="field-wrap" data-for="level">
+          <label class="field-label" for="alLevel">Nivel</label>
+          <select class="field" id="alLevel">
+            <option value="above70">RSI &gt; 70 (sobrecompra)</option>
+            <option value="below30">RSI &lt; 30 (sobreventa)</option>
+          </select>
+        </div>
+        <div class="field-wrap" data-for="target">
+          <label class="field-label" for="alTarget">Señal</label>
+          <select class="field" id="alTarget">
+            <option value="buy">Alcista</option>
+            <option value="sell">Bajista</option>
+          </select>
+        </div>
+        <p class="hint form-note" id="alTypeHint"></p>
+        <div class="btn-row form-actions">
+          <button type="submit" class="btn primary" id="alSave">Crear alerta</button>
+          <button type="button" class="btn" id="alCancel" hidden>Cancelar edición</button>
+        </div>
+        <p class="key-status" id="alMsg" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="dialog-section" aria-labelledby="alListTitle">
+      <div class="section-head">
+        <h3 id="alListTitle">Tus alertas</h3>
+        <button type="button" class="btn btn-sm" id="alCheck">Comprobar ahora</button>
+      </div>
+      <p class="hint" id="alSchedule"></p>
+      <ul class="manage-list" id="alList" aria-labelledby="alListTitle"></ul>
+    </section>
+
+    <section class="dialog-section" aria-labelledby="alHistTitle">
+      <div class="section-head">
+        <h3 id="alHistTitle">Historial</h3>
+        <button type="button" class="btn btn-sm" id="alHistClear">Vaciar historial</button>
+      </div>
+      <ol class="history-list" id="alHistory" aria-labelledby="alHistTitle"></ol>
+    </section>
+  </div>
+</dialog>
+
+<!-- =========================================================================
+     COMPARAR
+     ========================================================================= -->
+<dialog class="dialog" id="compareDialog" aria-labelledby="cmpTitle">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <h2 id="cmpTitle">Comparar</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Cerrar comparar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <p class="hint">
+      Superpone hasta 4 valores al gráfico, en % desde el inicio de la ventana y en la temporalidad actual.
+      Mientras comparas, el gráfico usa un único eje en % y se ocultan las velas, medias, Bollinger, niveles
+      y el cono (están en precio). Cada valor cuesta 1 crédito por temporalidad (luego sale de la caché).
+    </p>
+    <ul class="manage-list" id="cmpList" aria-label="Valores comparados"></ul>
+    <form id="cmpForm" class="key-row cmp-form" novalidate>
+      <label class="sr-only" for="cmpInput">Ticker a comparar</label>
+      <input class="field" id="cmpInput" list="cmpSymbols" autocomplete="off" spellcheck="false" autocapitalize="characters" placeholder="Ticker (p. ej. MSFT)" />
+      <datalist id="cmpSymbols"></datalist>
+      <button type="submit" class="btn primary">Añadir</button>
+    </form>
+    <p class="key-status" id="cmpMsg" role="status" aria-live="polite"></p>
+    <div class="btn-row"><button type="button" class="btn" id="cmpClear">Quitar todos</button></div>
+  </div>
+</dialog>
+
+<!-- =========================================================================
+     DIBUJOS
+     ========================================================================= -->
+<dialog class="dialog" id="drawDialog" aria-labelledby="drawTitle">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <h2 id="drawTitle">Dibujos</h2>
+      <button type="button" class="icon-btn" data-close aria-label="Cerrar dibujos">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <p class="hint">Se guardan para cada valor en este navegador. En el gráfico: arrastra un dibujo para moverlo, o selecciónalo y usa ↑/↓ para moverlo y Supr para borrarlo.</p>
+    <ul class="manage-list" id="drawItems" aria-labelledby="drawTitle"></ul>
+    <p class="key-status" id="drawMsg" role="status" aria-live="polite"></p>
+    <div class="btn-row"><button type="button" class="btn danger" id="drawClear">Borrar todos</button></div>
+  </div>
+</dialog>
+
+<!-- =========================================================================
+     BACKTEST
+     ========================================================================= -->
+<dialog class="dialog dialog-wide" id="btDialog" aria-labelledby="btTitle">
+  <div class="dialog-inner">
+    <header class="dialog-head">
+      <h2 id="btTitle">Backtest del modelo · <span id="btSymbol"></span></h2>
+      <button type="button" class="icon-btn" data-close aria-label="Cerrar backtest">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <p class="hint">
+      Recorre días pasados con velas diarias reales de Twelve Data. Cada día se ejecuta el modelo (la misma
+      vista diaria que el panel en 6M) solo con lo que se sabía ese día, y después se mide qué pasó: acierto
+      y rentabilidad de las señales frente a no hacer nada, cuántas veces acabó el precio dentro del cono del
+      80 % y si se tocó antes el objetivo o el stop. Cuesta 1 crédito.
+    </p>
+    <div class="bt-controls">
+      <label class="pf-base" for="btPeriod">Periodo
+        <select class="field field-sm" id="btPeriod">
+          <option value="2">≈ 2 años</option><option value="5" selected>≈ 5 años</option><option value="10">≈ 10 años</option>
+        </select>
+      </label>
+      <button type="button" class="btn primary" id="btRun">Ejecutar backtest</button>
+      <button type="button" class="btn" id="btCancel" hidden>Cancelar</button>
+    </div>
+    <div class="bt-progress" id="btProgress" role="progressbar" aria-label="Progreso del backtest" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><i></i></div>
+    <p class="key-status" id="btStatus" role="status" aria-live="polite"></p>
+    <div class="bt-results" id="btResults" tabindex="-1"></div>
+  </div>
+</dialog>
 
 <!-- =========================================================================
      AJUSTES
@@ -262,6 +607,18 @@
       </p>
     </section>
 
+    <section class="dialog-section" aria-labelledby="refreshTitle">
+      <h3 id="refreshTitle">Actualización automática</h3>
+      <label class="field-label" for="refreshSelect">Watchlist y alertas, con la app abierta</label>
+      <select class="field" id="refreshSelect" aria-describedby="refreshHint">
+        <option value="0">Desactivada (solo al abrir la app y a mano)</option>
+        <option value="5">Como mucho cada 5 min</option>
+        <option value="15">Como mucho cada 15 min</option>
+        <option value="30">Como mucho cada 30 min</option>
+      </select>
+      <p class="hint" id="refreshHint">Cada actualización cuesta 1 crédito por valor vigilado. Si el cupo del día no da para ese ritmo, se espacia sola; con todos los mercados cerrados, como mucho cada hora.</p>
+    </section>
+
     <section class="dialog-section" aria-labelledby="usageTitle">
       <h3 id="usageTitle">Consumo de la API</h3>
       <dl class="kv" id="usageList"></dl>
@@ -285,11 +642,23 @@
 <script src="js/data.js" defer></script>
 <script src="js/indicators.js" defer></script>
 <script src="js/model.js" defer></script>
+<script src="js/watchlist.js" defer></script>
+<script src="js/alerts.js" defer></script>
+<script src="js/monitor.js" defer></script>
+<script src="js/portfolio.js" defer></script>
+<script src="js/drawings.js" defer></script>
+<script src="js/backtest.js" defer></script>
 <script src="js/state.js" defer></script>
 <script src="js/chart-primitives.js" defer></script>
 <script src="js/charts.js" defer></script>
 <script src="js/panel.js" defer></script>
 <script src="js/settings.js" defer></script>
+<script src="js/watchlist-ui.js" defer></script>
+<script src="js/alerts-ui.js" defer></script>
+<script src="js/portfolio-ui.js" defer></script>
+<script src="js/compare-ui.js" defer></script>
+<script src="js/drawing-tools.js" defer></script>
+<script src="js/backtest-ui.js" defer></script>
 <script src="js/controls.js" defer></script>
 <script src="js/main.js" defer></script>
 </body>

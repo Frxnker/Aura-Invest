@@ -597,7 +597,7 @@
       "<b>Cruce bajista</b> reciente: la EMA 20 ha perforado la SMA 50 hace 6 sesiones y queda un 5,04% por debajo, lo que suele anticipar debilidad.",
       "<b>RSI(14) 30,3</b> (+3,7 pts en 5 sesiones): por debajo de la línea media de 50, momentum débil.",
       "El volumen reciente es <b>1,37× su media de 20 sesiones</b>, respaldando el avance del precio.",
-      "Plan: reducir o vender en <b>$255,40</b>, stop sobre la resistencia R1 (<b>$282,86</b>) y objetivo en <b>$200,48</b> (objetivo 2R); riesgo/beneficio 1:2,0."
+      "Escenario bajista: referencia en <b>$255,40</b>, stop sobre la resistencia R1 (<b>$282,86</b>) y objetivo en <b>$200,48</b> (objetivo 2R); riesgo/beneficio 1:2,0."
     ]
   },
   "MSFT-1M": {
@@ -1038,7 +1038,7 @@
       "La EMA 20 (<b>$507,69</b>) se mantiene un 1,61% sobre la SMA 50 (<b>$499,65</b>): <b>estructura de medias alcista</b>, con el precio por encima de ambas.",
       "<b>RSI(14) 57,8</b> (−10,5 pts en 5 velas horarias): momentum positivo sin llegar a sobrecompra.",
       "El volumen reciente es <b>1,05× su media de 20 velas horarias</b>, en línea con lo habitual: no confirma ni contradice el movimiento.",
-      "Sin ventaja estadística clara (54% alcista frente a 16% bajista): mejor esperar un retroceso al soporte S1 en <b>$510,25</b> antes de abrir posición."
+      "Sin ventaja estadística clara (54% alcista frente a 16% bajista): el nivel de referencia sería un retroceso al soporte S1 en <b>$510,25</b>."
     ]
   },
   "MSFT-YTD": {
@@ -1640,7 +1640,7 @@
       "La EMA 20 (<b>$495,48</b>) se mantiene un 7,92% sobre la SMA 50 (<b>$459,12</b>): <b>estructura de medias alcista</b>, con el precio por encima de ambas.",
       "<b>RSI(14) 57,5</b> (+4,6 pts en 5 sesiones): momentum positivo sin llegar a sobrecompra.",
       "El volumen reciente es <b>0,60× su media de 20 sesiones</b>: participación baja y poca convicción en el movimiento alcista.",
-      "Plan: entrada en <b>$512,80</b>, stop a 2× ATR(14) (<b>$464,08</b>) y objetivo en <b>$610,23</b> (objetivo 2R); riesgo/beneficio 1:2,0."
+      "Escenario alcista: entrada de referencia en <b>$512,80</b>, stop a 2× ATR(14) (<b>$464,08</b>) y objetivo en <b>$610,23</b> (objetivo 2R); riesgo/beneficio 1:2,0."
     ]
   },
   "NVDA-1D": {
@@ -1982,7 +1982,7 @@
       "<b>Cruce bajista</b> reciente: la EMA 20 ha perforado la SMA 50 hace 9 velas de 5 min y queda un 0,83% por debajo, lo que suele anticipar debilidad.",
       "<b>RSI(14) 35,0</b> (−8,8 pts en 5 velas de 5 min): por debajo de la línea media de 50, momentum débil.",
       "El volumen reciente es <b>1,54× su media de 20 velas de 5 min</b>, confirmando la presión vendedora.",
-      "Plan: reducir o vender en <b>$186,60</b>, stop a 2× ATR(14) (<b>$190,55</b>) y objetivo en <b>$179,04</b> (proyección central a 3M); riesgo/beneficio 1:1,9."
+      "Escenario bajista: referencia en <b>$186,60</b>, stop a 2× ATR(14) (<b>$190,55</b>) y objetivo en <b>$179,04</b> (proyección central a 3M); riesgo/beneficio 1:1,9."
     ]
   },
   "NVDA-1A": {
@@ -2580,7 +2580,7 @@
       "La EMA 20 (<b>$159,33</b>) se mantiene un 21,20% sobre la SMA 50 (<b>$131,46</b>): <b>estructura de medias alcista</b>, con el precio por encima de ambas.",
       "<b>RSI(14) 74,0</b>: zona de sobrecompra. El impulso es fuerte, pero crece el riesgo de recogida de beneficios.",
       "El volumen reciente es <b>0,67× su media de 20 sesiones</b>: participación baja y poca convicción en el movimiento alcista.",
-      "Plan: entrada en <b>$186,60</b>, stop a 2× ATR(14) (<b>$164,08</b>) y objetivo en <b>$231,64</b> (objetivo 2R); riesgo/beneficio 1:2,0."
+      "Escenario alcista: entrada de referencia en <b>$186,60</b>, stop a 2× ATR(14) (<b>$164,08</b>) y objetivo en <b>$231,64</b> (objetivo 2R); riesgo/beneficio 1:2,0."
     ]
   },
   "SAN.MC-5D": {
@@ -2947,7 +2947,7 @@
       "La EMA 20 (<b>8,963 €</b>) cotiza un 0,74% bajo la SMA 50 (<b>9,029 €</b>): <b>estructura de medias bajista</b>, con el precio por debajo de ambas.",
       "<b>RSI(14) 40,9</b> (−8,1 pts en 5 velas de 15 min): por debajo de la línea media de 50, momentum débil.",
       "El volumen reciente es <b>1,64× su media de 20 velas de 15 min</b>, confirmando la presión vendedora.",
-      "Plan: reducir o vender en <b>8,912 €</b>, stop sobre la resistencia R1 (<b>8,968 €</b>) y objetivo en <b>8,799 €</b> (objetivo 2R); riesgo/beneficio 1:2,0."
+      "Escenario bajista: referencia en <b>8,912 €</b>, stop sobre la resistencia R1 (<b>8,968 €</b>) y objetivo en <b>8,799 €</b> (objetivo 2R); riesgo/beneficio 1:2,0."
     ]
   },
   "TSLA-5A": {
@@ -3195,7 +3195,7 @@
       "La EMA 20 (<b>$493,18</b>) cotiza un 7,20% bajo la SMA 50 (<b>$531,42</b>): <b>estructura de medias bajista</b>, con el precio por debajo de ambas.",
       "<b>RSI(14) 42,5</b> (−2,3 pts en 5 semanas): por debajo de la línea media de 50, momentum débil.",
       "El volumen reciente es <b>1,05× su media de 20 semanas</b>, en línea con lo habitual: no confirma ni contradice el movimiento.",
-      "Plan: reducir o vender en <b>$438,20</b>, stop a 2× ATR(14) (<b>$590,50</b>) y objetivo en <b>$281,59</b> (banda inferior del cono 3M); riesgo/beneficio 1:1,0."
+      "Escenario bajista: referencia en <b>$438,20</b>, stop a 2× ATR(14) (<b>$590,50</b>) y objetivo en <b>$281,59</b> (banda inferior del cono 3M); riesgo/beneficio 1:1,0."
     ]
   }
 }

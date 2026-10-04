@@ -13,6 +13,7 @@ const { client } = Aura.api;
 
 const KEY_FORMAT = /^[A-Za-z0-9_-]{8,128}$/;
 let onKeyChange = () => {};
+let onRefreshChange = () => {};
 
 function setStatus(text, kind = '') {
   const el = $('#keyStatus');
@@ -30,6 +31,7 @@ function refresh() {
   input.value = '';
   input.placeholder = store.getApiKey() ? 'Pega otra clave para sustituirla' : 'Pega aquí tu clave';
   $('#keyDelete').disabled = !store.getApiKey();
+  $('#refreshSelect').value = String(store.get('prefs').refreshMinutes);
   if (store.problem) setStatus(store.problem, 'err');
   else setStatus(describeSavedKey());
   renderUsage(client.status());
@@ -64,8 +66,13 @@ function reportKeyOk() {
   if ($('#settingsDialog').open) setStatus('Clave correcta: datos recibidos de Twelve Data.', 'ok');
 }
 
-function init({ onKeyChange: cb }) {
+function init({ onKeyChange: cb, onRefreshChange: rc = () => {} }) {
   onKeyChange = cb;
+  onRefreshChange = rc;
+  $('#refreshSelect').addEventListener('change', (e) => {
+    store.set('prefs', { ...store.get('prefs'), refreshMinutes: Number(e.target.value) });
+    onRefreshChange();
+  });
   $('#settingsBtn').addEventListener('click', open);
   $('#usagePill').addEventListener('click', open);
   $('#settingsClose').addEventListener('click', () => $('#settingsDialog').close());
