@@ -33,6 +33,7 @@ test('qué dibujo hay bajo el puntero: tolerancia, el más cercano y los extremo
   ];
   assert.deepEqual(plain(D.hitTest(coords, 50, 104)), { id: 'h', part: 'line' });
   assert.equal(D.hitTest(coords, 50, 110), null);
+  assert.deepEqual(plain(D.hitTest(coords, 50, 112, 16)), { id: 'h', part: 'line' }, 'con el dedo (16 px) se agarra a 12 px');
   assert.deepEqual(plain(D.hitTest(coords, 60, 252)), { id: 't', part: 'line' });
   assert.deepEqual(plain(D.hitTest(coords, 12, 203)), { id: 't', part: 'a' });
   assert.deepEqual(plain(D.hitTest(coords, 108, 299)), { id: 't', part: 'b' });

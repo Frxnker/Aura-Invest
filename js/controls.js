@@ -133,6 +133,38 @@ function initSearch(selectSymbol) {
 }
 
 /* ---- Barra de herramientas y watchlist ---- */
+/**
+ * Desplegables de la barra («Indicadores», «Dibujo») con el patrón disclosure: el botón abre y
+ * cierra (aria-expanded); Escape cierra y devuelve el foco al botón; se cierran al pulsar fuera
+ * o al salir con Tab. Con `data-close-on-pick`, elegir una opción cierra y devuelve el foco.
+ */
+function initMenus() {
+  const menus = [...document.querySelectorAll('.tb-menu')].map((wrap) => ({ wrap, btn: wrap.querySelector('.tb-menu-btn'), pop: wrap.querySelector('.tb-pop') }));
+  const setOpen = (m, open) => { m.pop.hidden = !open; m.btn.setAttribute('aria-expanded', String(open)); };
+  for (const m of menus) {
+    m.btn.addEventListener('click', () => {
+      const open = m.pop.hidden;
+      menus.forEach((x) => setOpen(x, false));
+      setOpen(m, open);
+    });
+    m.wrap.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || m.pop.hidden) return;
+      e.stopPropagation();
+      setOpen(m, false);
+      m.btn.focus();
+    });
+    m.wrap.addEventListener('focusout', (e) => { if (e.relatedTarget && !m.wrap.contains(e.relatedTarget)) setOpen(m, false); });
+    if ('closeOnPick' in m.pop.dataset) {
+      m.pop.addEventListener('click', (e) => {
+        if (!e.target.closest('button')) return;
+        setOpen(m, false);
+        if (!document.querySelector('dialog[open]')) m.btn.focus();
+      });
+    }
+  }
+  document.addEventListener('pointerdown', (e) => menus.forEach((m) => { if (!m.pop.hidden && !m.wrap.contains(e.target)) setOpen(m, false); }));
+}
+
 function initToolbar(selectTimeframe, selectSymbol) {
   $('#tfSeg').innerHTML = Object.keys(TIMEFRAMES).map((k) => `<button data-tf="${k}" aria-pressed="${k === state.tf}">${k}</button>`).join('');
   $('#tfSeg').addEventListener('click', (e) => {
@@ -142,14 +174,19 @@ function initToolbar(selectTimeframe, selectSymbol) {
     selectTimeframe(b.dataset.tf);
   });
 
-  document.querySelectorAll('.tg[data-toggle]').forEach((btn) => {
+  const toggles = [...document.querySelectorAll('.tg[data-toggle]')];
+  const renderIndCount = () => { $('#indCount').textContent = `(${toggles.filter((b) => state.show[b.dataset.toggle]).length})`; };
+  toggles.forEach((btn) => {
     btn.addEventListener('click', () => {
       const k = btn.dataset.toggle;
       state.show[k] = !state.show[k];
       btn.setAttribute('aria-pressed', String(state.show[k]));
       charts.applyToggle(k);
+      renderIndCount();
     });
   });
+  renderIndCount();
+  initMenus();
 
   $('#fitBtn').addEventListener('click', charts.fitAll);
   $('#watchlist').addEventListener('click', (e) => {

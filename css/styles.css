@@ -387,6 +387,7 @@ body.is-loading .spinner { visibility: visible; }
 .level-label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
 .level-val { display: block; font-family: var(--mono); font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .level-sub { display: block; font-family: var(--mono); font-size: 11px; margin-top: 2px; color: var(--muted); }
+.level-watch { margin-bottom: 14px; }
 .rationale { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
 .rationale li { position: relative; padding-left: 16px; font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
 .rationale li::before {
@@ -627,8 +628,24 @@ select.field { appearance: auto; font-family: var(--font); }
 .cmp-sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 .cmp-form { margin-top: 12px; }
 .tb-sep { width: 1px; align-self: stretch; background: var(--border-2); margin: 2px 2px; }
+/* Desplegables de la barra («Indicadores», «Dibujo») */
+.tb-menu { position: relative; }
+.tb-menu-btn[aria-expanded="true"] { border-color: rgba(139, 108, 240, .6); color: var(--ink); }
+.tb-chev { transition: transform .15s; }
+.tb-menu-btn[aria-expanded="true"] .tb-chev { transform: rotate(180deg); }
+.tb-count { font-family: var(--mono); color: var(--muted); }
+.tb-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 220px;
+  display: grid; gap: 6px; padding: 8px;
+  background: var(--panel); border: 1px solid var(--border-2); border-radius: 10px; box-shadow: 0 12px 30px rgba(0, 0, 0, .45);
+}
+.tb-pop-end { left: auto; right: 0; }
+.tb-pop .tg { width: 100%; justify-content: flex-start; padding: 7px 10px; }
 .tg svg { flex: none; }
 .pane-main.is-drawing .chart-host { cursor: crosshair; }
+/* Al pulsar un dibujo se bloquea el desplazamiento del gráfico y la librería relaja su touch-action:
+   sin esto, el navegador podía desplazar la página a mitad del arrastre (pointercancel). */
+.pane-main .chart-host { touch-action: none; }
 .draw-hint {
   position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 4; margin: 0; pointer-events: none;
   padding: 5px 10px; border-radius: 8px; background: rgba(17, 20, 30, .92); border: 1px solid var(--border-2);
@@ -651,6 +668,8 @@ select.field { appearance: auto; font-family: var(--font); }
 .bt-verdicts { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 12.5px; color: var(--ink-2); line-height: 1.5; }
 .bt-base th, .bt-base td { color: var(--muted); }
 .bt-caveats { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.bt-fee { width: 6.5em; }
+.bt-err td { color: var(--down-text); }
 .tg[aria-pressed="true"]#compareBtn { border-color: rgba(139, 108, 240, .6); color: var(--ink); }
 .st-warn { white-space: normal; }
 

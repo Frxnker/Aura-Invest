@@ -90,6 +90,44 @@ function fmtAgo(ms, now = Date.now()) {
 /** Fecha UTC 'AAAA-MM-DD' (para el contador diario de créditos). */
 const utcDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 
+/* ---- Zonas horarias (para alinear en UTC real velas de bolsas distintas) ---- */
+
+/** Zona horaria IANA del navegador (p. ej. "Europe/Madrid"); "UTC" si no se puede saber. */
+function localTimeZone() {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
+}
+
+const ZONE_FMT = new Map();
+const ZONE_OFFSET = new Map();
+/** Minutos que la zona `tz` va por delante de UTC en el instante `utcMs` (0 si la zona no es válida). */
+function zoneOffsetMin(tz, utcMs) {
+  if (!tz || tz === 'UTC') return 0;
+  const hour = Math.floor(utcMs / 3600000);           // los cambios de hora ocurren en horas en punto
+  const key = `${tz}|${hour}`;
+  if (ZONE_OFFSET.has(key)) return ZONE_OFFSET.get(key);
+  let off = 0;
+  try {
+    if (!ZONE_FMT.has(tz)) {
+      ZONE_FMT.set(tz, new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }));
+    }
+    const p = Object.fromEntries(ZONE_FMT.get(tz).formatToParts(new Date(hour * 3600000)).map((x) => [x.type, x.value]));
+    off = Math.round((Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute) - hour * 3600000) / 60000);
+  } catch { off = 0; }
+  ZONE_OFFSET.set(key, off);
+  return off;
+}
+
+/**
+ * Hora de pared de la zona `tz` codificada como UTC (así se guardan las velas) → instante UTC
+ * real, ambos en segundos. Sin zona conocida se deja igual.
+ */
+function wallToUtc(sec, tz) {
+  if (!tz || tz === 'UTC') return sec;
+  const ms = sec * 1000;
+  const first = ms - zoneOffsetMin(tz, ms) * 60000;
+  return (ms - zoneOffsetMin(tz, first) * 60000) / 1000;   // segunda pasada por si cruza un cambio de hora
+}
+
 const arrow = (v) => (v >= 0 ? '▲' : '▼');
 const dirClass = (v) => (v >= 0 ? 'up-t' : 'down-t');
 
@@ -98,5 +136,6 @@ Aura.utils = {
   dayStart, weekdayOf, isWeekend, nextTradingDays, addMonthsUTC,
   fmtNum, fmtSigned, fmtPct, fmtPrice, fmtCompact, fmtDate, MONTHS, pad2, arrow, dirClass,
   fmtLocalTime, fmtLocalDateTime, fmtAgo, utcDay,
+  localTimeZone, zoneOffsetMin, wallToUtc,
 };
 })();

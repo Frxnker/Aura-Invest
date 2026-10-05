@@ -8,6 +8,11 @@ const B = Aura.backtest;
 const sim = await Aura.simulator.fetchOHLCV('AAPL', '1A');          // 1700 velas diarias deterministas
 const bars = plain(sim.bars);
 const meta = plain(sim.meta);
+/** a ≈ b; el tercer argumento es la tolerancia (número) o el mensaje (texto). */
+const close = (a, b, opt = 1e-9) => {
+  const eps = typeof opt === 'number' ? opt : 1e-9;
+  assert.ok(Math.abs(a - b) < eps, `${typeof opt === 'string' ? opt + ': ' : ''}${a} ≠ ${b}`);
+};
 const key = (s) => JSON.stringify({ a: s.action, p: s.probs, e: s.entry, t: s.target, st: s.stop, c: s.cone });
 
 test('recortar el histórico a 400 velas no cambia la señal (analyze solo usa ventana + calentamiento)', () => {
@@ -65,12 +70,14 @@ test('objetivo o stop primero, ambos el mismo día, ninguno y pendiente', () => 
   const path = mk([100, 101, 103, 99, 96, ...Array(60).fill(100)], 1, 1);
   assert.equal(B.outcome(path, s('buy', 104, 90)).touch, 'target');           // máximo 104 el día 2
   assert.equal(B.outcome(path, s('buy', 120, 96)).touch, 'stop');             // mínimo 95 el día 4
-  assert.equal(B.outcome(path, s('sell', 95, 105)).touch, 'target');          // a la baja: mínimo 95 el día 4
   assert.equal(B.outcome(path, s('buy', 104, 100)).touch, 'stop', 'el día 1 el mínimo (100) toca el stop antes que el objetivo');
   assert.equal(B.outcome(mk([100, 100, ...Array(70).fill(100)], 10, 10), s('buy', 105, 95)).touch, 'both');
   assert.equal(B.outcome(mk(Array(80).fill(100)), s('buy', 150, 50)).touch, 'none');
   assert.equal(B.outcome(mk(Array(20).fill(100)), s('buy', 150, 50)).touch, 'pending');
-  assert.equal(B.outcome(path, { ...s('hold', 104, 90) }).touch, null, 'Neutral no tiene objetivo/stop que medir');
+  assert.equal(B.outcome(path.slice(0, 30), s('buy', 104, 90)).touch, 'pending',
+    'sin las 63 sesiones completas no cuenta, aunque ya haya tocado el objetivo (si no, se sesgaría hacia las que se resuelven pronto)');
+  assert.equal(B.outcome(path, s('hold', 104, 90)).touch, null, 'Neutral no tiene objetivo/stop que medir');
+  assert.equal(B.outcome(path, s('sell', null, null)).touch, null, 'Bajista no propone operación');
 });
 
 test('resumen: medias, aciertos frente a cualquier día y reparto del cono', () => {
@@ -92,6 +99,7 @@ test('resumen: medias, aciertos frente a cualquier día y reparto del cono', () 
   assert.equal(s.h63.all.n, 3);
   assert.deepEqual(s.cone, { n: 3, inside: 2 / 3, above: 1 / 3, below: 0 });
   assert.deepEqual(s.touches.buy, { n: 2, target: 0.5, stop: 0.5, both: 0, none: 0 });
+  assert.deepEqual(Object.keys(s.touches), ['buy'], 'Bajista no tiene objetivo/stop que medir');
 });
 
 test('con velas diarias reales de AAPL (Twelve Data): se ejecuta entero y cuadra', async () => {
@@ -105,6 +113,68 @@ test('con velas diarias reales de AAPL (Twelve Data): se ejecuta entero y cuadra
   assert.equal(s.h21.all.n, s.days - B.H_SHORT);
   assert.equal(progress.at(-1), 1);
   assert.ok(s.cone.inside >= 0 && s.cone.inside <= 1);
+});
+
+/* ---- Medidas honestas, estrategias y modo semanal ---- */
+
+test('resultado en R (calculado a mano): objetivo, stop, ambos el mismo día y cierre al final', () => {
+  const path = mk([100, 101, 103, 99, 96, ...Array(60).fill(100)], 1, 1);
+  close(B.rMultiple(path, 0, 63, 100, 104, 90), 0.4);        // objetivo 104 el día 2: +4 / 10
+  close(B.rMultiple(path, 0, 63, 100, 120, 96), -1);         // stop el día 4
+  close(B.rMultiple(mk(Array(70).fill(100), 10, 10), 0, 63, 100, 105, 95), -1, 'ambos el mismo día: stop');
+  close(B.rMultiple(mk([100, ...Array(70).fill(102)]), 0, 63, 100, 150, 50), 0.04, 'ninguno: cierre a 63 sesiones');
+  assert.equal(B.rMultiple(path, 0, 63, 100, 110, 100), null, 'sin riesgo no hay R');
+});
+
+test('estrategias con comisión (calculado a mano)', () => {
+  const series = mk([100, 110, 99, 120]);
+  const rows = ['buy', 'hold', 'buy'].map((action, d) => ({ d, action }));
+  const s = Object.fromEntries(plain(B.strategies(series, rows, { fee: 0.01 })).map((x) => [x.key, x]));
+  // Comprar y mantener: compra al empezar (1 % de comisión) y luego ×1,1 ×0,9 ×120/99
+  close(s.hold.cagr, (0.99 * 1.1 * 0.9 * (120 / 99)) ** (252 / 3) - 1);
+  assert.equal(s.hold.trades, 1);
+  // Solo con Alcista: compra, vende al día siguiente (Neutral) y vuelve a comprar
+  close(s.buyOnly.cagr, (0.99 * 1.1 * 0.99 * 1 * 0.99 * (120 / 99)) ** (252 / 3) - 1);
+  assert.equal(s.buyOnly.trades, 3);
+  close(s.buyOnly.exposure, 2 / 3);
+  close(s.buyOnly.maxDrawdown, 0.99 * 1.1 * 0.99 / (0.99 * 1.1) - 1, 'la caída máxima es la comisión de la venta');
+  assert.equal(s.exitOnSell.trades, 1, 'sin señales Bajista, igual que comprar y mantener');
+});
+
+test('intervalo por bloques: determinista, contiene la media y no se calcula con muy pocos datos', () => {
+  const rows = Array.from({ length: 400 }, (_, i) => ({ v: Math.sin(i * 1.7) + (i % 7) / 10 }));
+  const m = (rs) => rs.reduce((a, r) => a + r.v, 0) / rs.length;
+  const a = plain(B.blockCI(rows, m, { block: 21 }));
+  assert.deepEqual(plain(B.blockCI(rows, m, { block: 21 })), a, 'misma semilla, mismo intervalo');
+  assert.ok(a[0] < m(rows) && m(rows) < a[1]);
+  assert.equal(B.blockCI(rows.slice(0, 30), m, { block: 21 }), null);
+});
+
+test('medidas honestas con velas diarias reales de AAPL', async () => {
+  const real = plain(Aura.data.parseSeries(td('time_series_AAPL_1day')));
+  const res = await B.run(real, { symbol: 'AAPL', currency: 'USD', precision: 2 }, { chunk: 1e9 });
+  const h = res.honest;
+  assert.equal(h.independent, Math.floor(res.summary.h63.all.n / 63));
+  for (const a of ['buy', 'sell']) {
+    if (!h[a].n) continue;
+    close(h[a].delta, res.summary.h63.by[a].mean - res.summary.h63.all.mean, 1e-12);
+    if (h[a].ci) assert.ok(h[a].ci[0] <= h[a].ci[1]);
+  }
+  close(h.cone.inside, res.summary.cone.inside, 1e-12);
+  assert.deepEqual(plain(res.strategies.map((s) => s.key)), ['hold', 'buyOnly', 'exitOnSell']);
+  if (h.R) assert.ok(Number.isFinite(h.R.signal) && Number.isFinite(h.R.base));
+});
+
+test('modo semanal: vista 5A, 0,2 velas por día y horizontes de 4 y 13 semanas', async () => {
+  const weekly = plain(Aura.data.parseSeries(td('time_series_AAPL_1week')));
+  const seen = new Set();
+  const spy = (data, tf) => { seen.add(`${tf}|${data.barsPerDay}`); return Aura.model.analyze(data, tf); };
+  const res = await B.run(weekly, { symbol: 'AAPL', currency: 'USD', precision: 2 }, { mode: 'weekly', analyze: spy, chunk: 1e9 });
+  assert.deepEqual([...seen], ['5A|0.2']);
+  assert.equal(res.rows.length, weekly.length - B.MODES.weekly.minHistory);
+  assert.equal(res.summary.h63.all.n, Math.max(0, res.rows.length - 13));
+  const r = res.rows[0];
+  close(r.r21, weekly[r.d + 4].close / r.close - 1, 1e-12);
 });
 
 test('se puede cancelar', async () => {

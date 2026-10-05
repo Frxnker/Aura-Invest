@@ -80,6 +80,31 @@
       "httpStatus": 200,
       "capturedAt": "2026-10-04T18:09:47.779Z",
       "key": "demo"
+    },
+    "time_series_EURUSD_5min_madrid": {
+      "query": "/time_series?symbol=EUR/USD&interval=5min&start_date=2026-10-02 15:00:00&end_date=2026-10-02 22:30:00&timezone=Europe/Madrid",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-05T09:05:53.747Z"
+    },
+    "time_series_AAPL_1day_split2014_none": {
+      "query": "/time_series?symbol=AAPL&interval=1day&start_date=2014-05-27&end_date=2014-06-20&adjust=none&timezone=Exchange",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-05T09:31:13.989Z"
+    },
+    "time_series_AAPL_1day_split2014_splits": {
+      "query": "/time_series?symbol=AAPL&interval=1day&start_date=2014-05-27&end_date=2014-06-20&adjust=splits&timezone=Exchange",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-05T09:31:22.201Z"
+    },
+    "time_series_AAPL_1day_split2020_none": {
+      "query": "/time_series?symbol=AAPL&interval=1day&start_date=2020-08-17&end_date=2020-09-11&adjust=none&timezone=Exchange",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-05T09:31:30.399Z"
+    },
+    "time_series_AAPL_1day_split2020_splits": {
+      "query": "/time_series?symbol=AAPL&interval=1day&start_date=2020-08-17&end_date=2020-09-11&adjust=splits&timezone=Exchange",
+      "httpStatus": 200,
+      "capturedAt": "2026-10-05T09:31:38.585Z"
     }
   }
 }

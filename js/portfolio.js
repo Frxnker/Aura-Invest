@@ -251,6 +251,73 @@ function rateOn(series, date) {
   return { rate: series[lo].close, date: series[lo].date };
 }
 
+/* ---------------------------------------------------------------------------
+ * Splits (Twelve Data no da /splits en el plan gratuito: se deducen de los cierres)
+ * ------------------------------------------------------------------------- */
+
+/** Fracción sencilla p/q (q ≤ 10) a menos de un 3 % de `x`: 4 → 4/1, 1,5 → 3/2, 0,1 → 1/10. */
+function splitRatio(x) {
+  let best = null;
+  for (let q = 1; q <= 10; q++) {
+    const p = Math.round(x * q);
+    const err = p >= 1 ? Math.abs(p / q / x - 1) : Infinity;
+    if (!best || err < best.err - 1e-9) best = { p, q, err };
+  }
+  return best.err < 0.03 ? { p: best.p, q: best.q } : null;
+}
+
+/**
+ * Splits a partir de los cierres tal cual cotizaron (`raw`) y ajustados por splits (`adj`):
+ * antes de un split de 4 por 1, raw/adj = 4; desde ese día, 1. El cociente debe ser estable la
+ * sesión anterior y la siguiente al salto (un dato erróneo de un solo día no es un split).
+ * @returns {{date, factor, p, q}[]}  factor = acciones nuevas por cada antigua (p por q)
+ */
+function detectSplits(raw, adj) {
+  const adjBy = new Map(adj.map((x) => [x.date, x.close]));
+  const r = raw.filter((x) => x.close > 0 && adjBy.get(x.date) > 0).map((x) => ({ date: x.date, v: x.close / adjBy.get(x.date) }));
+  const out = [];
+  for (let i = 1; i < r.length; i++) {
+    const f = r[i - 1].v / r[i].v;
+    if (f < 1.2 && f > 1 / 1.2) continue;
+    if (i + 1 < r.length && Math.abs(r[i + 1].v / r[i].v - 1) > 0.02) continue;
+    if (i >= 2 && Math.abs(r[i - 1].v / r[i - 2].v - 1) > 0.02) continue;
+    const ratio = splitRatio(f);
+    if (ratio) out.push({ date: r[i].date, factor: ratio.p / ratio.q, ...ratio });
+  }
+  return out;
+}
+
+/**
+ * Compras y ventas anotadas en acciones de antes de un split: su precio, dividido por el cierre
+ * ajustado de ese día, da el factor que les falta (1 si ya están ajustadas). Con varios splits
+ * se busca la combinación de los posteriores que encaja (p. ej. solo se corrigió el primero).
+ * @returns {{factor, count, splits: object[]}[]}  agrupado por el factor que hay que aplicar
+ */
+function splitAdvice(txs, raw, adj) {
+  const splits = detectSplits(raw, adj);
+  if (!splits.length) return [];
+  const groups = new Map();
+  for (const t of txs) {
+    if (t.type === 'dividend') continue;
+    const after = splits.filter((s) => s.date > t.date).slice(0, 6);
+    const a = after.length ? rateOn(adj, t.date) : null;
+    if (!a) continue;
+    const k = t.price / a.rate;
+    let best = { f: 1, err: Math.abs(Math.log(k)) };
+    for (let mask = 1; mask < 1 << after.length; mask++) {
+      const f = after.reduce((acc, s, i) => (mask & (1 << i) ? acc * s.factor : acc), 1);
+      const err = Math.abs(Math.log(k / f));
+      if (err < best.err) best = { f, err, used: after.filter((_, i) => mask & (1 << i)) };
+    }
+    if (best.f === 1 || best.err > Math.log(1.2)) continue;      // ya ajustada (o un precio que no encaja con nada)
+    const key = best.f.toFixed(6);
+    const g = groups.get(key) || { factor: best.f, count: 0, splits: best.used };
+    g.count++;
+    groups.set(key, g);
+  }
+  return [...groups.values()];
+}
+
 /**
  * Valor diario de la cartera en la moneda base y capital aportado neto.
  * @param {object[]} txs
@@ -437,5 +504,6 @@ Aura.portfolio = {
   onChange(f) { listeners.add(f); return () => listeners.delete(f); },
   // Funciones puras (para la vista y las pruebas)
   normalize, validateTx, ledger, valuate, evolution, rateOn, toJSON, toCSV, chronological,
+  detectSplits, splitAdvice,
 };
 })();

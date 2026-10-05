@@ -164,6 +164,19 @@ test('fallo de red y respuesta no JSON', async () => {
   assert.equal(await codeOf(html.client.get('/quote', { symbol: 'A' })), 'SERVER');
 });
 
+test('sin conexión la petición no llega a Twelve Data: no cuenta créditos ni ocupa cupo del minuto', async () => {
+  let online = false;
+  const { client, fetch } = setup({ handler: () => (online ? OK : new TypeError('Failed to fetch')) });
+  for (let i = 0; i < 12; i++) assert.equal(await codeOf(client.get('/quote', { symbol: `S${i}` }, { cost: 2 })), 'NETWORK');
+  assert.equal(fetch.calls.length, 12);
+  assert.equal(client.status().creditsToday, 0);
+  assert.equal(client.status().minuteUsed, 0);
+  online = true;
+  await client.get('/quote', { symbol: 'AAPL' }, { cost: 3 });
+  assert.equal(client.status().creditsToday, 3, 'las que sí llegan cuentan como siempre');
+  assert.equal(client.status().minuteUsed, 3);
+});
+
 test('prioridad: con la cola esperando, lo prioritario sale antes', async () => {
   const { clock, store } = setup({ usage: { day: '2026-10-05', credits: 8, recent: Array.from({ length: 8 }, () => ({ t: Date.UTC(2026, 9, 5, 14, 0, 0), cost: 1 })) } });
   const order = [];

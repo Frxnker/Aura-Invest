@@ -8,7 +8,7 @@
 'use strict';
 
 const { LWC, COLORS, CHART_BG, TIMEFRAMES } = Aura.config;
-const { $, clamp, fmtNum, fmtPct, fmtSigned, fmtPrice, fmtCompact, fmtDate, MONTHS, pad2, esc, arrow, dirClass } = Aura.utils;
+const { $, clamp, fmtNum, fmtPct, fmtSigned, fmtPrice, fmtCompact, fmtDate, MONTHS, pad2, esc, arrow, dirClass, wallToUtc } = Aura.utils;
 const { ConeFillPrimitive, HorizontalBandPrimitive, DrawingsPrimitive } = Aura.primitives;
 const { macd: calcMacd, bollinger: calcBollinger } = Aura.indicators;
 const state = Aura.state;
@@ -514,15 +514,28 @@ function percentSeries(vis, bars) {
 }
 
 /**
+ * Como percentSeries, pero alineando en UTC real: cada serie trae las horas de su zona
+ * (la de su bolsa, o la del usuario en forex y cripto) codificadas como UTC. Hace falta en
+ * intradía; en diario se alinea por fecha.
+ */
+function percentSeriesUtc(vis, visTz, bars, barsTz) {
+  const toUtc = (arr, tz) => arr.map((b) => ({ time: wallToUtc(b.time, tz), close: b.close }));
+  return percentSeries(toUtc(vis, visTz), toUtc(bars, barsTz));
+}
+
+/**
  * Activa, actualiza o desactiva el modo Comparar.
  * @param {object} m          modelo del valor principal
  * @param {object[]} others   [{ id, data } | { id, error }] (vacío = salir del modo)
  * @returns {object[]} resumen para la interfaz: [{ id, color, last, error }]
  */
 function renderCompare(m, others) {
+  const intraday = m.tf.kind === 'intraday';
+  const series = (o) => (o.error ? [] : intraday
+    ? percentSeriesUtc(m.vis, m.meta.timezone, o.data ? o.data.bars : o.bars, o.data ? o.data.meta.timezone : m.meta.timezone)
+    : percentSeries(m.vis, o.bars || o.data.bars));
   cmp = others.length ? [{ id: m.meta.id || m.meta.symbol, bars: m.vis }, ...others].map((o, k) => ({
-    id: o.id, color: COLORS.compare[k], error: o.error || null,
-    values: o.error ? [] : percentSeries(m.vis, o.bars || o.data.bars),
+    id: o.id, color: COLORS.compare[k], error: o.error || null, values: series(o),
   })) : null;
   const on = comparing();
   CH.candles.applyOptions({ visible: !on });
@@ -558,5 +571,5 @@ function applyToggle(key) {
   updateReadouts(null);
 }
 
-Aura.charts = { init: initCharts, render, clear, applyToggle, fitAll, hideTooltip, renderCompare, comparing, percentSeries, drawingApi, refreshDrawings };
+Aura.charts = { init: initCharts, render, clear, applyToggle, fitAll, hideTooltip, renderCompare, comparing, percentSeries, percentSeriesUtc, drawingApi, refreshDrawings };
 })();

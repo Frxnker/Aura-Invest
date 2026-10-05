@@ -62,6 +62,26 @@ test('notificación del sistema solo si está activada y hay permiso; si no, avi
   assert.equal(shown.length, 1);
 });
 
+test('con service worker se usa showNotification (lo único que admite Chrome para Android)', async () => {
+  const entries = [{ symbol: 'AAPL', alertId: 'a1', message: 'AAPL cotiza a $333,69' }];
+  // Como en Android: el permiso está concedido, pero el constructor no se puede usar
+  class Android { constructor() { throw new TypeError("Failed to construct 'Notification': Illegal constructor."); } }
+  Android.permission = 'granted';
+  const sw = [];
+  const registration = { showNotification: async (title, opts) => { sw.push([title, opts.body, opts.tag]); } };
+  assert.equal(deliver(entries, { Notification: Android, enabled: true, registration }), 'system');
+  assert.deepEqual(sw, [['Aura Invest · AAPL', 'AAPL cotiza a $333,69', 'aura-a1']]);
+  // Sin service worker en Android: no se finge una notificación que no aparece
+  let blocked = 0;
+  assert.equal(deliver(entries, { Notification: Android, enabled: true, onBlocked: () => blocked++ }), 'app');
+  assert.equal(blocked, 1);
+  // Si showNotification se rechaza (p. ej. el sistema lo bloquea), también se avisa
+  const failing = { showNotification: () => Promise.reject(new Error('bloqueada')) };
+  deliver(entries, { Notification: Android, enabled: true, registration: failing, onBlocked: () => blocked++ });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(blocked, 2);
+});
+
 /* ---- Una pasada completa con respuestas reales de Twelve Data ---- */
 
 function setup() {

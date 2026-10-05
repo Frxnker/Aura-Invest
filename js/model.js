@@ -122,10 +122,15 @@ function trendProbability(bars, ind) {
 /**
  * Cono de previsión a 3 meses (paseo aleatorio geométrico):
  *  - σ diaria: desviación de los log-rendimientos recientes, escalada a sesión (√velas/día).
+ *    En diario se usan las últimas 250 sesiones (≈ 1 año) de la serie descargada, no solo la
+ *    ventana visible, para que el cono no dependa de la vista (6M, YTD o 1A); con 120 el
+ *    cono del 80 % cubría menos de lo debido en el backtest. Intradía y semanal: 120 velas.
  *  - μ diaria: pendiente de regresión del log-precio, contraída hacia 0 según la longitud
  *    del histórico (una tendencia de 1 día pesa poco) + sesgo de la puntuación técnica.
  *  - Central: P0·e^(μt); bandas: P0·e^(μt ± z·σ·√t), z = 1,2816 (80 %).
  */
+const SIGMA_LOOKBACK = { intraday: 120, daily: 250, weekly: 120 };
+
 /**
  * Instantes futuros donde se evalúa el cono, como { time, t } con t en sesiones.
  *  - Diario/semanal: una vela futura por sesión (o por semana), igual que el histórico.
@@ -151,15 +156,17 @@ function futureSchedule(lastT, tf, meta) {
   return out;
 }
 
-function forecastCone(bars, barsPerDay, score, tf, meta) {
+/** @param {object[]} volBars  serie para la σ (en diario, la descargada completa); acaba en la misma vela que `bars` */
+function forecastCone(bars, barsPerDay, score, tf, meta, volBars = bars) {
   const n = bars.length;
   const P0 = bars[n - 1].close;
-  const lookR = Math.min(120, n - 1);
+  const nv = volBars.length;
+  const lookR = Math.min(SIGMA_LOOKBACK[tf.kind], nv - 1);
   const rets = [];
-  for (let k = n - lookR; k < n; k++) {
+  for (let k = nv - lookR; k < nv; k++) {
     // En intradía se excluyen los huecos de apertura para no inflar la volatilidad por vela
-    if (tf.kind === 'intraday' && dayStart(bars[k].time) !== dayStart(bars[k - 1].time)) continue;
-    rets.push(Math.log(bars[k].close / bars[k - 1].close));
+    if (tf.kind === 'intraday' && dayStart(volBars[k].time) !== dayStart(volBars[k - 1].time)) continue;
+    rets.push(Math.log(volBars[k].close / volBars[k - 1].close));
   }
   const sigmaDay = clamp(stdev(rets) * Math.sqrt(barsPerDay), 0.006, 0.09);
 
@@ -193,19 +200,24 @@ function forecastCone(bars, barsPerDay, score, tf, meta) {
 /**
  * Recomendación táctica y niveles operativos.
  *  - Comprar: Bullish ≥ 55 % y S > 0,2 · Vender: Bearish ≥ 55 % y S < −0,2 · resto: Mantener.
- *  - Stop: tras el soporte/resistencia más cercano si está a 0,6–3,5 ATR; si no, a 2 ATR.
- *  - Objetivo: el nivel S/R más cercano que ofrezca ≥ 1,5R; si no hay, la proyección
+ *  - Bajista no propone operación en corto: en el backtest con datos reales (6 valores, 5 a
+ *    20 años) esos cortos perdían de media. Solo se señala el soporte S1 como nivel a vigilar.
+ *  - Stop: tras el soporte más cercano si está a 0,6–3,5 ATR; si no, a 2 ATR.
+ *  - Objetivo: la resistencia más cercana que ofrezca ≥ 1,5R; si no hay, la proyección
  *    central (si aporta entre 1R y 3R, coherente con el stop de la temporalidad) o 2R.
  *    Siempre acotado al cono del 80 % a 3 meses.
  */
 function buildAdvisory(trend, fc, sr) {
   const close = fc.P0, a = trend.details.atr;
-  const S1 = sr.supports[0]?.price, R1 = sr.resistances[0]?.price;
+  const S1 = sr.supports[0]?.price;
   let action = 'hold';
   if (trend.probs.bull >= 55 && trend.score > 0.2) action = 'buy';
   else if (trend.probs.bear >= 55 && trend.score < -0.2) action = 'sell';
 
-  const dir = action === 'sell' ? -1 : 1;           // +1 posición larga, −1 corta
+  if (action === 'sell') {
+    return { action, entry: null, stop: null, target: null, rr: null, watch: S1 ?? null, watchBasis: S1 != null ? 'soporte S1' : null };
+  }
+
   let entry = close, entryBasis = 'precio actual', stop, stopBasis;
 
   if (action === 'hold') {
@@ -215,27 +227,24 @@ function buildAdvisory(trend, fc, sr) {
     else if (e != null && e < close) { entry = e; entryBasis = 'retroceso a la EMA 20'; }
     stop = entry - 1.5 * a; stopBasis = 'a 1,5× ATR bajo la entrada';
   } else {
-    const lvl = dir > 0 ? S1 : R1;
-    const dist = lvl != null ? (entry - lvl) * dir : null;
+    const dist = S1 != null ? entry - S1 : null;
     if (dist != null && dist >= 0.6 * a && dist <= 3.5 * a) {
-      stop = lvl - dir * 0.35 * a;
-      stopBasis = dir > 0 ? 'bajo el soporte S1' : 'sobre la resistencia R1';
+      stop = S1 - 0.35 * a; stopBasis = 'bajo el soporte S1';
     } else {
-      stop = entry - dir * 2 * a; stopBasis = 'a 2× ATR(14)';
+      stop = entry - 2 * a; stopBasis = 'a 2× ATR(14)';
     }
   }
 
   const risk = Math.abs(entry - stop);
-  const gain = (v) => (v - entry) * dir;            // beneficio en la dirección de la operación
-  const levels = (dir > 0 ? sr.resistances : sr.supports).map((l, k) => [l.price, `${dir > 0 ? 'resistencia R' : 'soporte S'}${k + 1}`]);
+  const gain = (v) => v - entry;
+  const levels = sr.resistances.map((l, k) => [l.price, `resistencia R${k + 1}`]);
   const viable = levels.filter(([p]) => gain(p) >= 1.5 * risk).sort((x, y) => gain(x[0]) - gain(y[0]));
   let target, targetBasis;
   if (viable.length) [target, targetBasis] = viable[0];
   else if (gain(fc.end.center) >= risk && gain(fc.end.center) <= 3 * risk) [target, targetBasis] = [fc.end.center, 'proyección central a 3M'];
-  else [target, targetBasis] = [entry + dir * 2 * risk, 'objetivo 2R'];
+  else [target, targetBasis] = [entry + 2 * risk, 'objetivo 2R'];
 
-  const bound = dir > 0 ? fc.end.upper : fc.end.lower;
-  if (gain(target) > gain(bound)) { target = bound; targetBasis = `banda ${dir > 0 ? 'superior' : 'inferior'} del cono 3M`; }
+  if (gain(target) > gain(fc.end.upper)) { target = fc.end.upper; targetBasis = 'banda superior del cono 3M'; }
 
   const rr = Math.abs(target - entry) / Math.max(1e-9, risk);
   return { action, entry, stop, target, rr, entryBasis, stopBasis, targetBasis };
@@ -281,7 +290,12 @@ function buildRationale(m) {
 
   const rr = fmtNum(adv.rr, 1);
   if (adv.action === 'buy') out.push(`Escenario alcista: entrada de referencia en ${P(adv.entry)}, stop ${adv.stopBasis} (${P(adv.stop)}) y objetivo en ${P(adv.target)} (${adv.targetBasis}); riesgo/beneficio 1:${rr}.`);
-  else if (adv.action === 'sell') out.push(`Escenario bajista: referencia en ${P(adv.entry)}, stop ${adv.stopBasis} (${P(adv.stop)}) y objetivo en ${P(adv.target)} (${adv.targetBasis}); riesgo/beneficio 1:${rr}.`);
+  else if (adv.action === 'sell') {
+    const watch = adv.watch != null
+      ? `nivel a vigilar: ${adv.watchBasis} en ${P(adv.watch)} (${fmtPct((adv.watch / d.close - 1) * 100)})`
+      : 'no hay soporte por debajo del precio en la ventana';
+    out.push(`Escenario bajista: el modelo no propone abrir cortos (con datos reales, sus posiciones cortas perdían de media en el backtest); ${watch}.`);
+  }
   else out.push(`Sin ventaja estadística clara (${trend.probs.bull}% alcista frente a ${trend.probs.bear}% bajista): el nivel de referencia sería un ${adv.entryBasis} en ${P(adv.entry)}.`);
 
   return out;
@@ -308,7 +322,7 @@ function analyze(data, tfKey) {
 
   const sr = supportResistance(bars, ws, atrLast);
   const trend = trendProbability(bars, ind);
-  const fc = forecastCone(bars, data.barsPerDay, trend.score, tf, meta);
+  const fc = forecastCone(bars, data.barsPerDay, trend.score, tf, meta, tf.kind === 'daily' ? data.bars : bars);
   const adv = buildAdvisory(trend, fc, sr);
   const vis = bars.slice(ws);
 

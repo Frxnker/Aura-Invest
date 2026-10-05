@@ -48,17 +48,24 @@ function nextDelay(usage, cost, anyOpen, now, minMinutes = 5) {
 }
 
 /**
- * Entrega de avisos: notificación del sistema si el usuario la activó y dio permiso;
- * si no, solo dentro de la app. Devuelve el canal usado ('system' | 'app').
+ * Entrega de avisos: notificación del sistema si el usuario la activó y dio permiso; si no,
+ * solo dentro de la app (que avisa siempre). Con service worker se usa
+ * registration.showNotification(), lo único que admite Chrome para Android; sin él,
+ * `new Notification()`. Si el navegador se niega, se llama a `onBlocked` para que Ajustes no
+ * prometa notificaciones que no llegan. Devuelve el canal usado ('system' | 'app').
  */
-function deliver(entries, { Notification: N, enabled }) {
-  const system = Boolean(enabled && N && N.permission === 'granted');
-  if (system) {
-    for (const e of entries) {
-      try { new N(`Aura Invest · ${e.symbol}`, { body: e.message, tag: `aura-${e.alertId}` }); } catch { /* el navegador puede negarse */ }
-    }
+function deliver(entries, { Notification: N, enabled, registration = null, onBlocked = () => {} }) {
+  if (!(enabled && N && N.permission === 'granted')) return 'app';
+  let shown = 0;
+  for (const e of entries) {
+    const title = `Aura Invest · ${e.symbol}`, opts = { body: e.message, tag: `aura-${e.alertId}` };
+    try {
+      if (registration) Promise.resolve(registration.showNotification(title, opts)).catch(onBlocked);
+      else new N(title, opts);
+      shown++;
+    } catch { onBlocked(); }
   }
-  return system ? 'system' : 'app';
+  return shown ? 'system' : 'app';
 }
 
 /* ---- Estado ---- */
@@ -68,6 +75,7 @@ const emit = (kind, v) => subs[kind].forEach((f) => f(v));
 const lastQuotes = new Map();
 const lastSignals = new Map();
 let timer = null, running = null, lastRun = null, started = false;
+let swRegistration = null, systemBlocked = false;      // notificaciones del sistema (ver deliver)
 
 const activeAlerts = () => alerts.list().filter((a) => a.status === 'active');
 const watchedIds = () => [...new Set([...watchlist.ids(), ...activeAlerts().map((a) => a.symbol)])];
@@ -119,7 +127,10 @@ function runCheck({ force = false } = {}) {
 function evaluate(quotes, signals) {
   const fired = alerts.evaluateAll({ quotes, signals, now: Date.now() });
   if (fired.length) {
-    const channel = deliver(fired, { Notification: window.Notification, enabled: store.get('prefs').notify });
+    const channel = deliver(fired, {
+      Notification: window.Notification, enabled: store.get('prefs').notify,
+      registration: swRegistration, onBlocked: () => { systemBlocked = true; },
+    });
     emit('fired', { entries: fired, channel });
   }
   return fired;
@@ -168,6 +179,10 @@ Aura.monitor = {
   start() { started = true; return runCheck(); },
   stop() { started = false; clearTimeout(timer); timer = null; },
   runCheck, refreshIds, checkAlertsQuick, reschedule: schedule,
+  /** Registro del service worker con el que mostrar notificaciones (null: sin él). */
+  setNotifier(reg) { swRegistration = reg || null; systemBlocked = false; },
+  /** ¿El navegador ha rechazado alguna notificación del sistema? */
+  systemBlocked: () => systemBlocked,
   onQuotes: (f) => subs.quotes.add(f),
   onFired: (f) => subs.fired.add(f),
   onStatus: (f) => subs.status.add(f),

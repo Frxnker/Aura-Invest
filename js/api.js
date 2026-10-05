@@ -87,10 +87,21 @@ function createClient({ fetch: fetchFn, store, now = () => Date.now(), wait = (m
     return cur;
   }
   function record(cost) {
-    if (!cost) return;
+    if (!cost) return null;
     const u = usage();
+    const entry = { t: now(), cost };
     u.credits += cost;
-    u.recent.push({ t: now(), cost });
+    u.recent.push(entry);
+    store.setUsage(u);
+    return entry;
+  }
+  /** Una petición que no llegó a Twelve Data (sin conexión) no gasta créditos: se devuelven. */
+  function refund(entry) {
+    if (!entry) return;
+    const u = usage();
+    u.credits = Math.max(0, u.credits - entry.cost);
+    const i = u.recent.findIndex((r) => r.t === entry.t && r.cost === entry.cost);
+    if (i >= 0) u.recent.splice(i, 1);
     store.setUsage(u);
   }
   function exhaustDay() {
@@ -181,11 +192,12 @@ function createClient({ fetch: fetchFn, store, now = () => Date.now(), wait = (m
           continue;                                  // se reevalúa (puede haber llegado algo más prioritario)
         }
         queue.shift();
-        record(job.cost);
+        const spent = record(job.cost);
         emit();
         try {
           job.resolve(await send(job));
         } catch (err) {
+          if (err.code === 'NETWORK') { refund(spent); emit(); }
           if (err.code === 'MINUTE_LIMIT' && !job.retried) {
             job.retried = true;                      // un único reintento tras el minuto siguiente
             pausedUntil = nextMinute();

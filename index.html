@@ -103,20 +103,34 @@
         <span class="perf" id="perf"></span>
         <span class="spinner" aria-hidden="true"></span>
       </div>
-      <div class="toggles" role="group" aria-label="Indicadores">
-        <button class="tg" data-toggle="ema" aria-pressed="true"><span class="sw" style="background:var(--ema)"></span>EMA 20</button>
-        <button class="tg" data-toggle="sma" aria-pressed="true"><span class="sw" style="background:var(--sma)"></span>SMA 50</button>
-        <button class="tg" data-toggle="sr" aria-pressed="true"><span class="sw dash" style="color:var(--ink-2)"></span>S/R</button>
-        <button class="tg" data-toggle="cone" aria-pressed="true"><span class="sw dash" style="color:var(--aura)"></span>Proyección 3M</button>
-        <button class="tg" data-toggle="bb" aria-pressed="false"><span class="sw" style="background:rgba(199,203,224,0.7)"></span>Bollinger</button>
-        <button class="tg" data-toggle="macd" aria-pressed="false"><span class="sw" style="background:#0ea5c6"></span>MACD</button>
+      <div class="toggles" role="group" aria-label="Herramientas del gráfico">
+        <!-- Desplegables (patrón disclosure): el botón abre y cierra; Escape cierra y devuelve el foco -->
+        <div class="tb-menu">
+          <button class="tg tb-menu-btn" id="indMenuBtn" type="button" aria-expanded="false" aria-controls="indMenu">
+            Indicadores <span class="tb-count" id="indCount"></span>
+            <svg class="tb-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+          <div class="tb-pop" id="indMenu" role="group" aria-label="Indicadores" hidden>
+            <button class="tg" type="button" data-toggle="ema" aria-pressed="true"><span class="sw" style="background:var(--ema)"></span>EMA 20</button>
+            <button class="tg" type="button" data-toggle="sma" aria-pressed="true"><span class="sw" style="background:var(--sma)"></span>SMA 50</button>
+            <button class="tg" type="button" data-toggle="sr" aria-pressed="true"><span class="sw dash" style="color:var(--ink-2)"></span>Soportes y resistencias</button>
+            <button class="tg" type="button" data-toggle="cone" aria-pressed="true"><span class="sw dash" style="color:var(--aura)"></span>Proyección 3M</button>
+            <button class="tg" type="button" data-toggle="bb" aria-pressed="false"><span class="sw" style="background:rgba(199,203,224,0.7)"></span>Bollinger</button>
+            <button class="tg" type="button" data-toggle="macd" aria-pressed="false"><span class="sw" style="background:#0ea5c6"></span>MACD</button>
+          </div>
+        </div>
         <button class="tg" id="compareBtn" type="button" aria-haspopup="dialog" aria-pressed="false"><span class="sw" style="background:linear-gradient(90deg,#0ea5c6,#c9820f,#d6589b)"></span>Comparar<span class="cmp-count"></span></button>
-        <span class="tb-sep" aria-hidden="true"></span>
-        <button class="tg" type="button" data-draw="hline" aria-pressed="false" title="Línea horizontal">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12h18"/></svg>Horizontal</button>
-        <button class="tg" type="button" data-draw="trend" aria-pressed="false" title="Línea de tendencia">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19 20 5"/><circle cx="4" cy="19" r="1.6"/><circle cx="20" cy="5" r="1.6"/></svg>Tendencia</button>
-        <button class="tg" type="button" id="drawListBtn" aria-haspopup="dialog">Dibujos<span class="draw-count"></span></button>
+        <div class="tb-menu">
+          <button class="tg tb-menu-btn" id="drawMenuBtn" type="button" aria-expanded="false" aria-controls="drawMenu">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/></svg>Dibujo
+            <svg class="tb-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+          <div class="tb-pop tb-pop-end" id="drawMenu" role="group" aria-label="Dibujo" data-close-on-pick hidden>
+            <button class="tg" type="button" data-draw="hline" aria-pressed="false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12h18"/></svg>Línea horizontal</button>
+            <button class="tg" type="button" data-draw="trend" aria-pressed="false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19 20 5"/><circle cx="4" cy="19" r="1.6"/><circle cx="20" cy="5" r="1.6"/></svg>Línea de tendencia</button>
+            <button class="tg" type="button" id="drawListBtn" aria-haspopup="dialog">Dibujos guardados<span class="draw-count"></span></button>
+          </div>
+        </div>
         <button class="icon-btn" id="fitBtn" title="Ajustar vista" aria-label="Ajustar vista">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
         </button>
@@ -172,12 +186,12 @@
         <h2>Probabilidad de tendencia</h2>
         <span class="conf" id="confBadge" data-level="Medium" title="Confianza del modelo">
           <span class="bars" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span id="confText">Medium</span>
+          <span id="confText">Media</span>
         </span>
       </header>
-      <div class="prob-row bull"><span class="prob-label">Bullish</span><div class="prob-track"><div class="prob-fill" id="pBullBar"></div></div><span class="prob-val up-t" id="pBullVal">0%</span></div>
+      <div class="prob-row bull"><span class="prob-label">Alcista</span><div class="prob-track"><div class="prob-fill" id="pBullBar"></div></div><span class="prob-val up-t" id="pBullVal">0%</span></div>
       <div class="prob-row neutral"><span class="prob-label">Neutral</span><div class="prob-track"><div class="prob-fill" id="pNeuBar"></div></div><span class="prob-val" id="pNeuVal">0%</span></div>
-      <div class="prob-row bear"><span class="prob-label">Bearish</span><div class="prob-track"><div class="prob-fill" id="pBearBar"></div></div><span class="prob-val down-t" id="pBearVal">0%</span></div>
+      <div class="prob-row bear"><span class="prob-label">Bajista</span><div class="prob-track"><div class="prob-fill" id="pBearBar"></div></div><span class="prob-val down-t" id="pBearVal">0%</span></div>
       <div class="score-line">
         <span>Puntuación</span>
         <div class="score-meter" aria-hidden="true"><div class="zero"></div><div class="score-dot" id="scoreDot"></div></div>
@@ -199,7 +213,7 @@
         <span class="tag">3 meses · IC 80%</span>
       </header>
       <div class="upside">
-        <span class="upside-label">Potential Upside</span>
+        <span class="upside-label">Variación central</span>
         <span class="upside-val" id="upsideVal">—</span>
       </div>
       <div class="range" aria-hidden="true">
@@ -232,11 +246,12 @@
           <div class="reco-sub">Lectura técnica · <span id="recoTf"></span></div>
         </div>
       </div>
-      <div class="levels">
-        <div class="level"><span class="level-label">Entry</span><span class="level-val" id="lvEntry">—</span><span class="level-sub" id="lvEntrySub">&nbsp;</span></div>
-        <div class="level"><span class="level-label">Price Target</span><span class="level-val" id="lvTarget">—</span><span class="level-sub" id="lvTargetSub">&nbsp;</span></div>
-        <div class="level"><span class="level-label">Stop Loss</span><span class="level-val" id="lvStop">—</span><span class="level-sub" id="lvStopSub">&nbsp;</span></div>
+      <div class="levels" id="levels">
+        <div class="level"><span class="level-label">Entrada</span><span class="level-val" id="lvEntry">—</span><span class="level-sub" id="lvEntrySub">&nbsp;</span></div>
+        <div class="level"><span class="level-label">Objetivo</span><span class="level-val" id="lvTarget">—</span><span class="level-sub" id="lvTargetSub">&nbsp;</span></div>
+        <div class="level"><span class="level-label">Stop</span><span class="level-val" id="lvStop">—</span><span class="level-sub" id="lvStopSub">&nbsp;</span></div>
       </div>
+      <div class="level level-watch" id="lvWatchBox" hidden><span class="level-label">Nivel a vigilar</span><span class="level-val" id="lvWatch">—</span><span class="level-sub" id="lvWatchSub">&nbsp;</span></div>
       <ul class="rationale" id="rationale"></ul>
     </article>
 
@@ -544,20 +559,32 @@
       </button>
     </header>
     <p class="hint">
-      Recorre días pasados con velas diarias reales de Twelve Data. Cada día se ejecuta el modelo (la misma
-      vista diaria que el panel en 6M) solo con lo que se sabía ese día, y después se mide qué pasó: acierto
-      y rentabilidad de las señales frente a no hacer nada, cuántas veces acabó el precio dentro del cono del
-      80 % y si se tocó antes el objetivo o el stop. Cuesta 1 crédito.
+      Recorre el pasado con velas reales de Twelve Data. En cada vela se ejecuta el modelo (la misma vista
+      que el panel: 6M en diario, 5A en semanal) solo con lo que se sabía entonces, y después se mide qué
+      pasó: acierto y rentabilidad de las señales frente a no hacer nada (con intervalos que tienen en
+      cuenta que los días seguidos se solapan), el cono del 80 %, el objetivo y el stop, y estrategias
+      sencillas con comisiones.
     </p>
     <div class="bt-controls">
+      <label class="pf-base" for="btScope">Valores
+        <select class="field field-sm" id="btScope">
+          <option value="one">Este valor</option><option value="watchlist">Toda la watchlist</option>
+        </select>
+      </label>
       <label class="pf-base" for="btPeriod">Periodo
         <select class="field field-sm" id="btPeriod">
-          <option value="2">≈ 2 años</option><option value="5" selected>≈ 5 años</option><option value="10">≈ 10 años</option>
+          <option value="2">≈ 2 años · diario</option><option value="5" selected>≈ 5 años · diario</option>
+          <option value="10">≈ 10 años · diario</option><option value="weekly">Todo el histórico · semanal</option>
         </select>
+      </label>
+      <label class="pf-base" for="btFee">Comisión por operación (%)
+        <input class="field field-sm bt-fee" id="btFee" type="text" inputmode="decimal" value="0,1" aria-describedby="btFeeHint" />
       </label>
       <button type="button" class="btn primary" id="btRun">Ejecutar backtest</button>
       <button type="button" class="btn" id="btCancel" hidden>Cancelar</button>
     </div>
+    <p class="hint" id="btCost"></p>
+    <p class="hint" id="btFeeHint">La comisión se aplica en cada compra o venta de las estrategias; al cambiarla se recalculan sin pedir datos.</p>
     <div class="bt-progress" id="btProgress" role="progressbar" aria-label="Progreso del backtest" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden><i></i></div>
     <p class="key-status" id="btStatus" role="status" aria-live="polite"></p>
     <div class="bt-results" id="btResults" tabindex="-1"></div>

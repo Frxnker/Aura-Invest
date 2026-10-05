@@ -4,6 +4,8 @@
  * - «Tendencia»: un clic en el punto inicial y otro en el final.
  * - Clic sobre un dibujo para seleccionarlo; arrastrar para moverlo (o mover un
  *   extremo de una tendencia). Mientras se arrastra, el gráfico no se desplaza.
+ *   Con el dedo, la zona para agarrar un dibujo es más ancha; si el sistema cancela el
+ *   gesto (pointercancel), el arrastre se descarta y el gráfico vuelve a desplazarse.
  * - Teclado: Supr/Retroceso borra el seleccionado; ↑/↓ lo mueven (Mayús: más);
  *   Esc cancela. El diálogo «Dibujos» permite editar precios y borrar sin ratón.
  * Se guardan por valor (Aura.drawings) y no se muestran en el modo Comparar.
@@ -54,9 +56,12 @@ function local(e) {
 }
 function inPane(p) { const a = api(); return p.x >= 0 && p.y >= 0 && p.x <= a.paneWidth() && p.y <= a.paneHeight(); }
 
-function select(id) {
+const TOUCH_TOL = 16;       // px para agarrar un dibujo con el dedo (con ratón, 6)
+
+function select(id, { touch = false } = {}) {
   selectedId = id;
-  if (id) hint('Dibujo seleccionado: arrástralo, muévelo con ↑/↓ o bórralo con Supr (Esc para soltarlo).');
+  if (id) hint(touch ? 'Dibujo seleccionado: arrástralo con el dedo o bórralo desde «Dibujos».'
+    : 'Dibujo seleccionado: arrástralo, muévelo con ↑/↓ o bórralo con Supr (Esc para soltarlo).');
   else if (!mode) hint('');
   refresh();
 }
@@ -68,11 +73,12 @@ function onPointerDown(e) {
   const p = local(e);
   if (!inPane(p)) return;
   if (mode) { press = p; lock(true); return; }
-  const hit = drawings.hitTest(api().primitive.coords, p.x, p.y);
+  const touch = e.pointerType === 'touch';
+  const hit = drawings.hitTest(api().primitive.coords, p.x, p.y, touch ? TOUCH_TOL : undefined);
   if (hit) {
     const orig = find(hit.id);
     if (!orig) return;
-    select(hit.id);
+    select(hit.id, { touch });
     drag = { id: hit.id, part: hit.part, start: p, orig, current: null };
     lock(true);
     e.preventDefault();
@@ -135,6 +141,15 @@ function onPointerUp(e) {
     if (res.ok) { select(res.drawing.id); Aura.controls.toast('Línea de tendencia guardada.'); }
     else Aura.controls.toast(res.error, 'error');
   }
+}
+
+/** El navegador o el sistema ha interrumpido el gesto: se descarta y se desbloquea el gráfico. */
+function onPointerCancel() {
+  if (!drag && !press) return;
+  drag = null;
+  press = null;
+  lock(false);
+  refresh({ override: null });
 }
 
 /* ---- Teclado ---- */
@@ -216,10 +231,16 @@ function init() {
   pane.addEventListener('pointerdown', onPointerDown, true);
   window.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerCancel);
   document.addEventListener('keydown', onKey);
   document.querySelectorAll('[data-draw]').forEach((b) => b.addEventListener('click', () => setMode(mode === b.dataset.draw ? null : b.dataset.draw)));
   $('#drawListBtn').addEventListener('click', () => { renderList(); $('#drawDialog').showModal(); ($('#drawItems input') || $('#drawClear')).focus(); });
   $('#drawDialog [data-close]').addEventListener('click', () => $('#drawDialog').close());
+  // Se abre desde el menú «Dibujo», que ya está cerrado: el foco vuelve a su botón, no a uno oculto
+  $('#drawDialog').addEventListener('close', () => {
+    const a = document.activeElement;
+    if (!a || a === document.body || a.closest('[hidden]')) $('#drawMenuBtn').focus();
+  });
   $('#drawItems').addEventListener('click', onListClick);
   $('#drawClear').addEventListener('click', () => { drawings.clear(state.symbol); select(null); renderList('Todos los dibujos de este valor se han borrado.'); });
   drawings.onChange(() => renderCount());

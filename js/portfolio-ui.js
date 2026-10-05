@@ -57,7 +57,22 @@ async function loadMarket(txs, { force = false } = {}) {
   const fxHist = new Map(), symHist = new Map();
   for (const c of currencies) fxHist.set(c, await fetchDailyHistory(`${b}/${c}`, first, { priority: 2 }).catch((e) => e));
   for (const s of symbols) symHist.set(s, await fetchDailyHistory(s, first, { priority: 1 }).catch((e) => e));
-  return { quotes: await quotesP, fxHist, symHist, pairs, at: Date.now() };
+  // Cierres sin ajustar de cada acción (1 crédito, 12 h en caché): con los ajustados se deducen los splits
+  const rawHist = new Map();
+  for (const s of symbols.filter((x) => !x.includes('/'))) rawHist.set(s, await fetchDailyHistory(s, first, { priority: 1, adjust: 'none' }).catch((e) => e));
+  return { quotes: await quotesP, fxHist, symHist, rawHist, pairs, at: Date.now() };
+}
+
+/** Aviso de operaciones anotadas en acciones de antes de un split (ver portfolio.splitAdvice). */
+function splitText(sym, g) {
+  const one = g.count === 1;
+  const f = fmtNum(g.factor, Number.isInteger(g.factor) ? 0 : 2);
+  const which = g.splits.length === 1
+    ? `al split ${g.splits[0].p} por ${g.splits[0].q} del ${dayText(g.splits[0].date)}`
+    : `a los splits ${g.splits.map((s) => `${s.p} por ${s.q} (${dayText(s.date)})`).join(' y ')}`;
+  return `${sym}: ${g.count} ${one ? 'operación anterior' : 'operaciones anteriores'} ${which} ${one ? 'está' : 'están'} en acciones de antes del split. `
+    + `Para que ${one ? 'cuadre' : 'cuadren'}, multiplica ${one ? 'su cantidad' : 'sus cantidades'} por ${f} y divide ${one ? 'su precio' : 'sus precios'} entre ${f} `
+    + '(y, si los hay, los dividendos por acción de esas fechas).';
 }
 
 /* ---------------------------------------------------------------------------
@@ -82,6 +97,7 @@ function compute() {
   // Cotizaciones por símbolo, comprobando que la divisa coincide con la de las operaciones
   const quotes = new Map();
   const warnings = [];
+  const staleErrors = [];            // la API falló y se usan respuestas guardadas: por qué
   for (const p of led.positions.filter((x) => x.quantity > 0)) {
     const q = m ? m.quotes.get(p.symbol) : null;
     if (!q) continue;
@@ -90,9 +106,10 @@ function compute() {
       warnings.push(`${p.symbol}: tus operaciones están en ${p.currency}, pero cotiza en ${q.meta.currency}; no se valora para no mezclar divisas.`);
       continue;
     }
-    if (q.stale) warnings.push(`${p.symbol}: cotización antigua (${fmtAgo(q.at)}).`);
+    if (q.stale) { warnings.push(`${p.symbol}: cotización antigua (${fmtAgo(q.at)}).`); staleErrors.push(q.error); }
     quotes.set(p.symbol, q);
   }
+  if (m) m.pairs.forEach((pair) => { const q = m.quotes.get(pair); if (q && !isErr(q) && q.stale) staleErrors.push(q.error); });
   const val = portfolio.valuate(led, { quotes, fxNow, base: b });
 
   let evo = { points: [], missing: [] };
@@ -101,10 +118,18 @@ function compute() {
     m.symHist.forEach((h, s) => { if (!isErr(h)) closes.set(s, h.closes); else warnings.push(`${s}: sin histórico diario (${h.message})`); });
     m.fxHist.forEach((h, c) => { if (!isErr(h)) fxSeries.set(c, h.closes); else warnings.push(`${b}/${c}: sin tipos de cambio (${h.message})`); });
     m.symHist.forEach((h, s) => { if (!isErr(h) && !h.complete) warnings.push(`${s}: Twelve Data no llega hasta tu primera operación; la evolución empieza el ${dayText(h.from)}.`); });
+    m.symHist.forEach((h, s) => { if (!isErr(h) && h.source.stale) { warnings.push(`${s}: cierres diarios antiguos (${fmtAgo(h.source.at)}).`); staleErrors.push(h.source.error); } });
+    m.fxHist.forEach((h, c) => { if (!isErr(h) && h.source.stale) { warnings.push(`${b}/${c}: tipos de cambio diarios antiguos (${fmtAgo(h.source.at)}).`); staleErrors.push(h.source.error); } });
+    m.rawHist.forEach((raw, s) => {
+      const adj = m.symHist.get(s);
+      if (isErr(raw) || !adj || isErr(adj)) return;
+      portfolio.splitAdvice(txs.filter((t) => t.symbol === s), raw.closes, adj.closes).forEach((g) => warnings.push(splitText(s, g)));
+    });
     evo = portfolio.evolution(txs, { closes, fxSeries, rows: led.rows, base: b });
   }
   led.errors.forEach((e) => warnings.push(e.message));
-  return { txs, led, val, evo, fxNow, warnings };
+  const stale = staleErrors.length ? { error: staleErrors.find(Boolean) || null } : null;
+  return { txs, led, val, evo, fxNow, warnings, stale };
 }
 
 /* ---------------------------------------------------------------------------
@@ -115,6 +140,9 @@ function renderStatus(c) {
   const items = [];
   if (!store.getApiKey()) {
     items.push('<span class="st-warn">Sin clave de API: se muestran tus operaciones y su coste en la divisa original, sin valor actual ni conversión a la moneda base.</span>');
+  } else if (loaded && c.stale) {
+    // Como en la vista Mercado: lo que no se pudo actualizar se muestra marcado, nunca como dato fresco
+    items.push(`<span class="st-warn">Datos antiguos: no se pudieron actualizar (${esc(c.stale.error ? c.stale.error.message : 'error')}); se muestran los últimos guardados.</span>`);
   } else if (loaded) {
     items.push(`Cotizaciones, cierres y tipos de cambio de <b>Twelve Data</b>, obtenidos a las <b>${fmtLocalTime(loaded.at)}</b>.`);
   }
@@ -195,7 +223,7 @@ function renderPositions(c) {
 
 function renderAllocation(c) {
   const open = c.val.items.filter((i) => i.quantity > 0 && i.weight != null).sort((a, b) => b.weight - a.weight);
-  $('#pfAllocTag').textContent = open.length ? `${open.length} posiciones` : '';
+  $('#pfAllocTag').textContent = open.length ? `${open.length} ${open.length === 1 ? 'posición' : 'posiciones'}` : '';
   $('#pfAlloc').innerHTML = open.length ? open.map((i) => `
     <li aria-label="${esc(`${i.symbol}: ${fmtNum(i.weight, 1)} %, ${money(i.valueBase)}`)}">
       <span class="alloc-sym">${esc(i.symbol)}</span>

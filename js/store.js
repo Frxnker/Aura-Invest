@@ -20,7 +20,7 @@
 'use strict';
 
 const KEY = 'aura:v1';
-const VERSION = 4;
+const VERSION = 5;
 const DRAWINGS_MAX = 50;          // por símbolo
 const CACHE_MAX_ENTRIES = 60;
 const HISTORY_MAX = 200;
@@ -68,7 +68,33 @@ const MIGRATIONS = {
   3: (d) => ({ ...d, prefs: { ...(isObj(d.prefs) ? d.prefs : {}), refreshMinutes: 15 }, portfolio: { baseCurrency: 'EUR', transactions: [] } }),
   // v4 · Fase 4: dibujos (líneas horizontales y de tendencia) por símbolo
   4: (d) => ({ ...d, drawings: {} }),
+  // v5 · el intradía de forex y cripto pasa de la hora «Exchange» de Twelve Data (Sídney para el
+  // forex, UTC para la cripto) a la hora local del usuario: las líneas de tendencia se trasladan
+  // para seguir en el mismo instante
+  5: (d) => ({ ...d, drawings: relocatePairDrawings(d.drawings) }),
 };
+
+/** Divisas (no cripto) para distinguir un par de forex de uno de criptomonedas. */
+const FIAT = new Set(['USD', 'EUR', 'GBP', 'JPY', 'CHF', 'AUD', 'CAD', 'NZD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'TRY',
+  'ZAR', 'MXN', 'SGD', 'HKD', 'CNH', 'CNY', 'INR', 'BRL', 'KRW', 'ILS', 'THB', 'TWD']);
+
+function relocatePairDrawings(all, local = Aura.utils.localTimeZone()) {
+  if (!isObj(all)) return all;
+  const { wallToUtc, zoneOffsetMin } = Aura.utils;
+  const out = {};
+  for (const [id, list] of Object.entries(all)) {
+    const pair = id.split(':')[0].split('/');
+    if (pair.length !== 2 || !Array.isArray(list)) { out[id] = list; continue; }
+    const from = FIAT.has(pair[0].toUpperCase()) && FIAT.has(pair[1].toUpperCase()) ? 'Australia/Sydney' : 'UTC';
+    const move = (q) => {
+      if (!isObj(q) || !Number.isFinite(q.t) || q.t % 86400 === 0) return q;     // fechas de velas diarias o semanales: igual
+      const utc = wallToUtc(q.t, from);
+      return { ...q, t: utc + zoneOffsetMin(local, utc * 1000) * 60 };
+    };
+    out[id] = list.map((x) => (isObj(x) && x.kind === 'trend' ? { ...x, a: move(x.a), b: move(x.b) } : x));
+  }
+  return out;
+}
 
 const point = (q) => isObj(q) && Number.isFinite(q.t) && Number.isFinite(q.p) && q.p > 0;
 function validDrawing(x) {
@@ -219,5 +245,5 @@ let browserStorage = null;
 try { browserStorage = window.localStorage; } catch { /* almacenamiento bloqueado: se usará memoria */ }
 
 Aura.store = createStore(browserStorage);
-Aura.storeInternals = { createStore, migrate, VERSION, KEY, DEFAULT_WATCHLIST, HISTORY_MAX, REFRESH_OPTIONS, DRAWINGS_MAX, validDrawing };
+Aura.storeInternals = { createStore, migrate, VERSION, KEY, DEFAULT_WATCHLIST, HISTORY_MAX, REFRESH_OPTIONS, DRAWINGS_MAX, validDrawing, relocatePairDrawings };
 })();

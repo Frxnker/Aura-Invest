@@ -7,7 +7,10 @@
  *
  * Fechas: las velas se piden con `timezone=Exchange` (hora local de la bolsa) y se
  * codifican como si fueran UTC, que es lo que esperan los gráficos y el modelo
- * (las 09:30 de Nueva York se muestran como 09:30). Las marcas de tiempo absolutas
+ * (las 09:30 de Nueva York se muestran como 09:30). Excepción: el intradía de forex y
+ * cripto se pide en la zona del navegador, porque para el forex Twelve Data usa la hora
+ * de Sídney y no indica la zona. `meta.timezone` dice en qué zona están las velas
+ * intradía (para alinearlas en UTC real al comparar). Las marcas de tiempo absolutas
  * (última cotización) se conservan en UTC real.
  *
  * Identificadores: "AAPL" (cotización principal en EE. UU.) o "SÍMBOLO:BOLSA"
@@ -17,7 +20,7 @@
 'use strict';
 
 const { TIMEFRAMES, CACHE_TTL, API } = Aura.config;
-const { last } = Aura.utils;
+const { last, localTimeZone } = Aura.utils;
 const { client, ApiError, MESSAGES, errorFrom } = Aura.api;
 
 const INSTRUMENT_TTL = 30 * 86400;     // lo aprendido de symbol_search (plan, nombre…)
@@ -178,12 +181,12 @@ function barsPerDayFor(tf, session) {
  * Petición de velas común a gráficos y cartera: plan conocido, caché por intervalo y,
  * si la API falla, la última respuesta guardada marcada como antigua.
  */
-async function requestSeries(id, interval, outputsize, priority) {
+async function requestSeries(id, interval, outputsize, { priority = 0, timezone = 'Exchange', adjust = null, ttl = CACHE_TTL[interval] } = {}) {
   const known = planError(id);
   if (known) throw known;
-  const params = { ...idParams(id), interval, outputsize, timezone: 'Exchange' };
+  const params = { ...idParams(id), interval, outputsize, timezone, ...(adjust ? { adjust } : {}) };
   try {
-    return await client.get('/time_series', params, { ttl: CACHE_TTL[interval], priority });
+    return await client.get('/time_series', params, { ttl, priority });
   } catch (err) {
     rememberRejection(id, err);
     const old = STALE_OK.has(err.code) && client.cacheGetAny(client.keyFor('/time_series', params));
@@ -197,13 +200,19 @@ const sourceOf = (res, interval) => ({ provider: API.provider, at: res.at, cache
 /** Velas de una temporalidad, con metadatos y origen. */
 async function fetchMarketData(id, tfKey, { priority = 3 } = {}) {
   const tf = TIMEFRAMES[tfKey];
-  const res = await requestSeries(id, tf.interval, tf.outputsize, priority);
+  const localIntraday = tf.kind === 'intraday' && id.includes('/');     // forex y cripto: hora del usuario
+  const tz = localIntraday ? localTimeZone() : 'Exchange';
+  const res = await requestSeries(id, tf.interval, tf.outputsize, { priority, timezone: tz });
   const bars = parseSeries(res.data);
   if (bars.length < 30) throw new ApiError('NOT_FOUND', 'Twelve Data devuelve demasiado pocas velas para analizar este símbolo.');
 
   const m = res.data.meta || {};
   let session = null, sessionExact = true;
-  if (tf.kind === 'intraday') {
+  if (localIntraday) {
+    // Forex y cripto cotizan las 24 h: deducirlo de las velas daría una sesión que depende
+    // de la hora a la que se mire (un día a medias parece una sesión corta)
+    session = [0, 1440];
+  } else if (tf.kind === 'intraday') {
     const inferred = inferSession(bars, tf.minutes);
     const stored = client.cacheGet(sessionKey(id));
     if (inferred.exact) client.cachePut(sessionKey(id), inferred.session, SESSION_TTL);
@@ -215,7 +224,9 @@ async function fetchMarketData(id, tfKey, { priority = 3 } = {}) {
     id, symbol: m.symbol || idParams(id).symbol,
     name: (info && info.name) || m.symbol || id,
     exchange: m.exchange || (info && info.exchange) || '',
-    mic: m.mic_code || '', timezone: m.exchange_timezone || '', type: m.type || '',
+    mic: m.mic_code || '', type: m.type || '',
+    timezone: localIntraday ? tz : (m.exchange_timezone || ''),
+    timeBasis: localIntraday ? 'local' : 'exchange',
     currency: currencyOf(m, id),
     pair: id.includes('/'),
     precision: precisionFor(last(bars).close),
@@ -235,11 +246,13 @@ const HISTORY_SIZES = [400, 800, 1600, 3200, 5000];
  * Cierres diarios desde una fecha (para la cartera: tipo de cambio de cada operación
  * y evolución del valor). Devuelve { closes: [{ date, close }], currency, from, complete, source }.
  * `complete` es false si Twelve Data no llega hasta `fromDate` (más de 5000 sesiones).
+ * Por defecto, ajustados por splits (lo que da Twelve Data); con `adjust: 'none'`, tal cual
+ * cotizaron (para detectar splits; 1 crédito, en caché 12 h).
  */
-async function fetchDailyHistory(id, fromDate, { priority = 1 } = {}) {
+async function fetchDailyHistory(id, fromDate, { priority = 1, adjust = null } = {}) {
   const days = Math.ceil((Date.now() - Date.parse(`${fromDate}T00:00:00Z`)) / 86400000) + 30;
   const outputsize = HISTORY_SIZES.find((n) => n >= days) || HISTORY_SIZES.at(-1);
-  const res = await requestSeries(id, '1day', outputsize, priority);
+  const res = await requestSeries(id, '1day', outputsize, adjust ? { priority, adjust, ttl: 12 * 3600 } : { priority });
   const closes = parseSeries(res.data).map((b) => ({ date: new Date(b.time * 1000).toISOString().slice(0, 10), close: b.close }));
   const m = res.data.meta || {};
   return {
@@ -331,11 +344,12 @@ async function searchSymbols(text, { signal } = {}) {
 }
 
 /**
- * Velas diarias completas (OHLCV) para el backtest. `outputsize` hasta 5000 sesiones
- * (≈ 20 años); cuesta 1 crédito y queda en caché 1 h.
+ * Velas completas (OHLCV) para el backtest: diarias o, con `interval: '1week'`, semanales.
+ * `outputsize` hasta 5000 (≈ 20 años en diario); cuesta 1 crédito. Queda en caché según el
+ * intervalo, salvo con `ttl: 0` (varios valores seguidos llenarían el almacenamiento local).
  */
-async function fetchDailyBars(id, outputsize, { priority = 2 } = {}) {
-  const res = await requestSeries(id, '1day', outputsize, priority);
+async function fetchDailyBars(id, outputsize, { priority = 2, interval = '1day', ttl } = {}) {
+  const res = await requestSeries(id, interval, outputsize, { priority, ...(ttl != null ? { ttl } : {}) });
   const bars = parseSeries(res.data);
   if (!bars.length) throw new ApiError('NOT_FOUND', MESSAGES.NOT_FOUND);
   const m = res.data.meta || {};
@@ -346,7 +360,7 @@ async function fetchDailyBars(id, outputsize, { priority = 2 } = {}) {
       exchange: m.exchange || '', currency: currencyOf(m, id), pair: id.includes('/'),
       precision: precisionFor(last(bars).close), session: null, sessionExact: true,
     },
-    bars, barsPerDay: 1, source: sourceOf(res, '1day'),
+    bars, barsPerDay: interval === '1week' ? 0.2 : 1, source: sourceOf(res, interval),
   };
 }
 

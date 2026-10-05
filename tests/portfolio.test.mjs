@@ -122,6 +122,43 @@ test('rateOn: cierre del día o del anterior disponible (fines de semana y festi
   assert.equal(P.rateOn(s, '2025-12-31'), null);
 });
 
+/* ---- Splits ---- */
+
+const closesOf = (name) => A.data.parseSeries(td(name)).map((b) => ({ date: new Date(b.time * 1000).toISOString().slice(0, 10), close: b.close }));
+const RAW = [...closesOf('time_series_AAPL_1day_split2014_none'), ...closesOf('time_series_AAPL_1day_split2020_none')];
+const ADJ = [...closesOf('time_series_AAPL_1day_split2014_splits'), ...closesOf('time_series_AAPL_1day_split2020_splits')];
+const on = (series, date) => series.find((x) => x.date === date).close;
+
+test('splits con cierres reales de AAPL: 7 por 1 (9 jun 2014) y 4 por 1 (31 ago 2020)', () => {
+  assert.deepEqual(plain(P.detectSplits(RAW, ADJ)).map((s) => [s.date, s.p, s.q, s.factor]), [['2014-06-09', 7, 1, 7], ['2020-08-31', 4, 1, 4]]);
+});
+
+test('aviso de splits: solo las operaciones anotadas en acciones de antes, con el factor que les falta', () => {
+  const t = (id, date, price, type = 'buy') => tx({ id, type, symbol: 'AAPL', date, quantity: 10, price, currency: 'USD' });
+  const advice = plain(P.splitAdvice([
+    t('a', '2014-05-28', on(RAW, '2014-05-28') * 1.01),      // tal cual cotizaba: le faltan 7 × 4
+    t('b', '2014-05-29', on(RAW, '2014-05-29') / 7),         // corregida solo por el split de 2014: le falta el de 2020
+    t('c', '2020-08-20', on(RAW, '2020-08-20') * 0.99),      // anterior al de 2020, sin ajustar
+    t('d', '2020-08-21', on(ADJ, '2020-08-21')),             // ya ajustada: nada
+    t('e', '2020-09-02', on(RAW, '2020-09-02')),             // posterior a los dos: nada
+    t('f', '2014-05-28', 2, 'dividend'),                     // dividendos: no se comparan con el precio
+  ], RAW, ADJ));
+  assert.deepEqual(advice.map((g) => [g.factor, g.count, g.splits.map((s) => s.date)]), [
+    [28, 1, ['2014-06-09', '2020-08-31']],
+    [4, 2, ['2020-08-31']],
+  ]);
+});
+
+test('splits: contrasplit 1 por 10, sin splits y un dato erróneo de un día', () => {
+  const days = ['2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-01-09'];
+  const adj = days.map((date) => ({ date, close: 50 }));
+  const reverse = days.map((date, i) => ({ date, close: i < 2 ? 5 : 50 }));       // antes valía 5; tras el contrasplit, 50
+  assert.deepEqual(plain(P.detectSplits(reverse, adj)).map((s) => [s.date, s.p, s.q]), [['2026-01-07', 1, 10]]);
+  assert.deepEqual(plain(P.detectSplits(adj, adj)), []);
+  const glitch = days.map((date, i) => ({ date, close: i === 2 ? 150 : 50 }));      // un solo día ×3
+  assert.deepEqual(plain(P.detectSplits(glitch, adj)), []);
+});
+
 /* ---- Validación y reglas ---- */
 
 test('validación de operaciones', () => {

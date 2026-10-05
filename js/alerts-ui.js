@@ -162,17 +162,38 @@ function renderList() {
 
 /* ---- Notificaciones ---- */
 
+/**
+ * Service worker mínimo (sw.js) para mostrar notificaciones: Chrome para Android no admite
+ * `new Notification()` desde la página. Solo existe en conexiones seguras (https o localhost).
+ */
+async function registerNotifier() {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator) || !window.isSecureContext) return null;
+  try {
+    const reg = await navigator.serviceWorker.register('sw.js');
+    Aura.monitor.setNotifier(reg);
+    return reg;
+  } catch {
+    return null;                                      // sin service worker se prueba con new Notification()
+  }
+}
+
 function renderNotif() {
   const N = window.Notification;
   const prefs = store.get('prefs');
   const btn = $('#alNotifBtn'), txt = $('#alNotifText');
   btn.hidden = false;
-  if (!N) {
-    txt.textContent = 'Este navegador no admite notificaciones: los avisos aparecerán dentro de la app.';
+  if (!window.isSecureContext) {
+    txt.textContent = 'Las notificaciones del navegador necesitan una conexión segura (https o localhost): los avisos aparecerán dentro de la app.';
+    btn.hidden = true;
+  } else if (!N) {
+    txt.textContent = 'Este navegador no admite notificaciones (en iPhone solo las tienen las webs añadidas a la pantalla de inicio): los avisos aparecerán dentro de la app.';
     btn.hidden = true;
   } else if (N.permission === 'denied') {
     txt.textContent = 'Las notificaciones están bloqueadas para este sitio: los avisos aparecerán dentro de la app. Puedes permitirlas en la configuración del navegador.';
     btn.hidden = true;
+  } else if (N.permission === 'granted' && prefs.notify && Aura.monitor.systemBlocked()) {
+    txt.textContent = 'El navegador no ha dejado mostrar la última notificación: los avisos aparecen dentro de la app.';
+    btn.textContent = 'Desactivar notificaciones';
   } else if (N.permission === 'granted' && prefs.notify) {
     txt.textContent = 'Recibirás notificaciones del navegador (además del aviso dentro de la app).';
     btn.textContent = 'Desactivar notificaciones';
@@ -190,6 +211,7 @@ async function toggleNotif() {
   } else if (N) {
     const perm = N.permission === 'granted' ? 'granted' : await N.requestPermission();
     store.set('prefs', { ...prefs, notify: perm === 'granted' });
+    if (perm === 'granted') await registerNotifier();
   }
   renderNotif();
 }
@@ -300,6 +322,8 @@ function init(h) {
 
   alerts.onChange(() => { if ($('#alertsDialog').open) renderList(); });
   renderBadge();
+  const N = window.Notification;
+  if (store.get('prefs').notify && N && N.permission === 'granted') registerNotifier();
 }
 
 Aura.alertsUI = { init, open, announce, renderBadge, renderList };

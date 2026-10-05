@@ -96,6 +96,11 @@ function renderStatus({ data, quote, queue } = {}) {
   if (data) {
     item(`Fuente: <b>${esc(data.source.provider)}</b>`);
     item(`Velas ${INTERVAL_TEXT[data.source.interval] || esc(data.source.interval)} obtenidas a las <b>${fmtLocalTime(data.source.at)}</b> (${data.source.cached ? 'de la caché, ' : ''}${fmtAgo(data.source.at, now)})`);
+    if (data.meta.session) {
+      // Intradía: en qué hora están las velas (acciones: la de su bolsa; forex y cripto: la del usuario)
+      const city = (data.meta.timezone || '').split('/').pop().replace(/_/g, ' ');
+      item(data.meta.timeBasis === 'local' ? 'Horas del gráfico: <b>tu hora local</b>' : `Horas del gráfico: <b>hora de la bolsa</b>${city ? ` (${esc(city)})` : ''}`);
+    }
     if (data.meta.session && !data.meta.sessionExact) item('Horario de sesión aproximado (velas de 1 h)');
   }
   if (isQuote(quote)) {
@@ -166,6 +171,8 @@ const RECO = {
   sell: { text: 'Bajista',  icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 9v8H9"/></svg>' },
 };
 
+const CONF_TEXT = { High: 'Alta', Medium: 'Media', Low: 'Baja' };
+
 function renderPanel(m) {
   const { trend, fc, adv, meta, tf } = m;
   const P = (v) => fmtPrice(v, meta);
@@ -180,7 +187,7 @@ function renderPanel(m) {
   const badge = $('#confBadge');
   badge.dataset.level = trend.level;
   badge.title = `Confianza del modelo: ${fmtNum(trend.conf * 100, 0)}/100`;
-  $('#confText').textContent = trend.level;
+  $('#confText').textContent = CONF_TEXT[trend.level];
   $('#scoreDot').style.left = `${((clamp(trend.score, -1, 1) + 1) / 2) * 100}%`;
   tween($('#scoreVal'), trend.score, (x) => fmtSigned(x, 2));
   $('#factorRows').innerHTML = trend.factors.map((f) => {
@@ -212,14 +219,26 @@ function renderPanel(m) {
   $('#recoIcon').innerHTML = RECO[adv.action].icon;
   $('#recoText').textContent = RECO[adv.action].text;
   $('#recoTf').textContent = `${tf.key} · ${tf.intervalLabel}`;
-  $('#rrTag').textContent = `R/B 1 : ${fmtNum(adv.rr, 1)}`;
   const rel = (v) => (v / fc.P0 - 1) * 100;
-  $('#lvEntry').textContent = P(adv.entry);
-  $('#lvEntrySub').textContent = adv.entryBasis === 'precio actual' ? 'a mercado' : fmtPct(rel(adv.entry));
-  $('#lvTarget').textContent = P(adv.target);
-  $('#lvTargetSub').innerHTML = `<span class="${dirClass(adv.target - adv.entry)}">${fmtPct((adv.target / adv.entry - 1) * 100)}</span>`;
-  $('#lvStop').textContent = P(adv.stop);
-  $('#lvStopSub').innerHTML = `<span class="${dirClass(adv.stop - adv.entry)}">${fmtPct((adv.stop / adv.entry - 1) * 100)}</span>`;
+  // Bajista no propone operación en corto: en lugar de entrada/objetivo/stop, el nivel a vigilar
+  const sell = adv.action === 'sell';
+  $('#rrTag').textContent = sell ? 'Sin operación' : `R/B 1 : ${fmtNum(adv.rr, 1)}`;
+  $('#levels').hidden = sell;
+  $('#lvWatchBox').hidden = !sell;
+  if (sell) {
+    const has = adv.watch != null;
+    $('#lvWatch').textContent = has ? P(adv.watch) : '—';
+    $('#lvWatchSub').innerHTML = has
+      ? `<span class="${dirClass(adv.watch - fc.P0)}">${fmtPct(rel(adv.watch))}</span> · ${esc(adv.watchBasis)}`
+      : 'sin soporte por debajo';
+  } else {
+    $('#lvEntry').textContent = P(adv.entry);
+    $('#lvEntrySub').textContent = adv.entryBasis === 'precio actual' ? 'a mercado' : fmtPct(rel(adv.entry));
+    $('#lvTarget').textContent = P(adv.target);
+    $('#lvTargetSub').innerHTML = `<span class="${dirClass(adv.target - adv.entry)}">${fmtPct((adv.target / adv.entry - 1) * 100)}</span>`;
+    $('#lvStop').textContent = P(adv.stop);
+    $('#lvStopSub').innerHTML = `<span class="${dirClass(adv.stop - adv.entry)}">${fmtPct((adv.stop / adv.entry - 1) * 100)}</span>`;
+  }
   // Las frases del modelo llevan <b> propios; los valores que contienen son números
   // formateados y divisas validadas en la capa de datos.
   $('#rationale').innerHTML = m.rationale.map((s) => `<li>${s}</li>`).join('');
